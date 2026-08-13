@@ -1,0 +1,7 @@
+work/
+outputs/
+data/*.pt
+.venv/
+__pycache__/
+*.pyc
+
