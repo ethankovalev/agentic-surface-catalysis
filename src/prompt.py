@@ -18,7 +18,7 @@ that molecule dissociated into fragments bonded to the surface.
 Build the slab first, then place the adsorbate, then build the
 dissociated endpoint. Each step reads what the previous one saved.
 
-Use 3x3x4 with 10 A vacuum for the slab, and 2.5 A clearance when
+Use 3x3x4 with 10 Å vacuum for the slab, and 2.5 Å clearance when
 placing the adsorbate.
 
 For the dissociated endpoint, do NOT pass separation or height. Leave

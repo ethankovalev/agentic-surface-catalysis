@@ -557,7 +557,6 @@ def check_dispersion_relevance() -> str:
     return f"dispersion: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
-# NEW
 @tool
 def check_dispersion_consistent() -> str:
     """Check endpoints, gas reference and NEB all used the same D3 setting.
@@ -586,7 +585,6 @@ def check_dispersion_consistent() -> str:
     return f"dispersion_consistent: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
-# NEW
 @tool
 def check_gas_reference_applied() -> str:
     """Check the scored barrier is referenced to the free molecule.
@@ -742,7 +740,7 @@ def check_endpoints_distinct() -> str:
         return f"endpoints_distinct: FAIL - {exc}"
 
     passed = (d1 - d0) > 0.8
-    detail = f"adsorbate bond {d0:.2f} -> {d1:.2f} A"
+    detail = f"adsorbate bond {d0:.2f} -> {d1:.2f} Å"
     if not passed:
         detail += " - endpoints look like the same state"
 
