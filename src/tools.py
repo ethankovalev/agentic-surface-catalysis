@@ -56,7 +56,6 @@ def _tag(atoms, n_metal):
     it sees a system with no adsorbate at all.
     """
     layers = atoms.get_tags()
-    top = max(layers[:n_metal]) if n_metal else 0
     tags = [0] * len(atoms)
     for i in range(n_metal):
         if layers[i] == 1:
@@ -211,14 +210,26 @@ def build_dissociated_endpoint(separation: float = None,
     if separation is None:
         separation = 2.5 * (r_metal + r_ads)
 
-    # Longest internal distance defines the bond being broken.
-    best, pair = -1.0, (ads[0], ads[1])
+    # CHANGED: only bonded pairs are candidates, then take the longest.
+    # Two hydrogens on opposite sides of a carbon sit further apart than
+    # any C-H bond, so the old "longest internal distance" rule split
+    # CH4 into CH2 + H2 instead of CH3 + H.
+    best, pair = -1.0, None
     for i in ads:
         for j in ads:
-            if i < j:
-                d = atoms.get_distance(i, j, mic=True)
-                if d > best:
-                    best, pair = d, (i, j)
+            if i >= j:
+                continue
+            d = atoms.get_distance(i, j, mic=True)
+            r_i = covalent_radii[atoms[i].number]
+            r_j = covalent_radii[atoms[j].number]
+            bonded = d < 1.3 * (r_i + r_j)
+            if bonded and d > best:
+                best, pair = d, (i, j)
+
+    if pair is None:
+        return ("FAILED: no bonded pair found in the adsorbate. The molecule "
+                "may already be dissociated, or the geometry is distorted.")
+
     a, b = pair
 
     left = [a] + [k for k in ads if k not in (a, b)
@@ -244,11 +255,20 @@ def build_dissociated_endpoint(separation: float = None,
         atoms.positions[group, 2] += (surface_z + height) - lowest
 
     write(_path("final.traj"), atoms)
+
+    # CHANGED: record what the fragments actually are, so a check can
+    # tell CH3 + H from CH2 + H2.
+    left_symbols = sorted(atoms[i].symbol for i in left)
+    right_symbols = sorted(atoms[i].symbol for i in right)
+
     store.put("final", {"separation": separation, "height": height,
-                        "fragments": [len(left), len(right)]})
-    return (f"Built dissociated endpoint: fragments of {len(left)} and "
-            f"{len(right)} atoms, {separation:.2f} Å apart, {height:.2f} Å "
-            f"above the surface. Saved to final.traj.")
+                        "fragments": [len(left), len(right)],
+                        "broken_bond": f"{atoms[a].symbol}-{atoms[b].symbol}",
+                        "fragment_symbols": [left_symbols, right_symbols]})
+    return (f"Built dissociated endpoint: broke the "
+            f"{atoms[a].symbol}-{atoms[b].symbol} bond into fragments of "
+            f"{len(left)} and {len(right)} atoms, {separation:.2f} Å apart, "
+            f"{height:.2f} Å above the surface. Saved to final.traj.")
 
 
 # ======================================================================
@@ -260,7 +280,7 @@ def relax_structure(structure: str, with_d3: bool = True,
                     fmax: float = 0.02, max_steps: int = 300) -> str:
     """Relax a saved structure to its nearest local minimum.
 
-    structure: "initial" or "final".
+    structure: "initial", "final", or "gasref".
     with_d3: include Grimme D3 dispersion in the relaxation loop. OC20
              is RPBE, which has no dispersion term, so leaving this off
              gives physically wrong geometries for weakly bound species
@@ -361,6 +381,8 @@ def run_neb(n_images: int = 10, with_d3: bool = True,
         "barrier_eV": float(barrier),
         "reaction_energy_eV": float(reaction_energy),
         "converged": bool(converged),
+        "with_d3": bool(with_d3),          # CHANGED: needed for the
+                                           # dispersion consistency check
         "peak_image": peak,
         "n_images": len(images),
         "profile_eV": [float(u) for u in uphill],
@@ -371,6 +393,7 @@ def run_neb(n_images: int = 10, with_d3: bool = True,
     return (f"NEB {status}. Barrier {barrier:.3f} eV, reaction energy "
             f"{reaction_energy:.3f} eV, peak at image {peak} of "
             f"{len(images) - 1}.")
+
 
 @tool
 def build_gas_reference(height: float = 8.0) -> str:
@@ -405,7 +428,7 @@ def build_gas_reference(height: float = 8.0) -> str:
 
     write(_path("gasref.traj"), atoms)
     store.put("gasref", {"height": height})
-    return (f"Built gas-phase reference with the molecule {height:.1f} A "
+    return (f"Built gas-phase reference with the molecule {height:.1f} Å "
             f"above the surface. Saved to gasref.traj. Relax it, then "
             f"call compute_gas_referenced_barrier.")
 
@@ -534,6 +557,109 @@ def check_dispersion_relevance() -> str:
     return f"dispersion: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
+# NEW
+@tool
+def check_dispersion_consistent() -> str:
+    """Check endpoints, gas reference and NEB all used the same D3 setting.
+
+    A barrier assembled from a mix of D3-on and D3-off energies is not a
+    barrier on any single potential energy surface. This is a separate
+    question from check_dispersion_relevance, which asks whether a
+    missing dispersion term explains a drifted geometry.
+    """
+    settings = {}
+    for key in ("initial_relaxed", "final_relaxed", "gasref_relaxed", "neb"):
+        record = store.get(key)
+        if record is None:
+            settings[key] = "missing"
+        else:
+            settings[key] = record.get("with_d3", "not recorded")
+
+    passed = (set(settings.values()) == {True})
+
+    detail = ", ".join(f"{k}={v}" for k, v in settings.items())
+    if not passed:
+        detail += (" - every stage must use the same setting, and D3 should "
+                   "be on for an RPBE-trained model")
+
+    store.record_check("dispersion_consistent", passed, detail)
+    return f"dispersion_consistent: {'PASS' if passed else 'FAIL'} - {detail}"
+
+
+# NEW
+@tool
+def check_gas_reference_applied() -> str:
+    """Check the scored barrier is referenced to the free molecule.
+
+    SBH10 measures from an isolated gas-phase molecule. run_neb reports
+    from the physisorbed state. If compute_gas_referenced_barrier was
+    never called, the scored number is the wrong quantity - and it will
+    look perfectly reasonable, because it is a real barrier, just
+    measured from the wrong zero.
+    """
+    barrier_gas = store.get("barrier_gas_eV")
+    well_depth = store.get("well_depth_eV")
+
+    if barrier_gas is None or well_depth is None:
+        passed = False
+        detail = ("compute_gas_referenced_barrier was never called, so the "
+                  "scored barrier is still measured from the physisorbed "
+                  "state")
+    elif well_depth < 0:
+        passed = False
+        detail = (f"well depth {well_depth:.3f} eV is negative, meaning the "
+                  "lifted molecule relaxed below the physisorbed state - one "
+                  "of the two is not a real minimum")
+    else:
+        passed = True
+        detail = (f"gas-referenced barrier {barrier_gas:.3f} eV, "
+                  f"well depth {well_depth:.3f} eV")
+
+    store.record_check("gas_reference", passed, detail)
+    return f"gas_reference: {'PASS' if passed else 'FAIL'} - {detail}"
+
+
+# NEW
+@tool
+def check_fragments_sensible() -> str:
+    """Check the endpoint split the molecule into plausible products.
+
+    Guards the bond-selection logic in build_dissociated_endpoint. The
+    classic failure is CH4 splitting into CH2 + H2 instead of CH3 + H,
+    because two hydrogens on the same carbon sit further apart than any
+    C-H bond.
+    """
+    record = store.get("final")
+    if record is None:
+        store.record_check("fragments", False, "no dissociated endpoint built")
+        return "fragments: FAIL - no dissociated endpoint built"
+
+    groups = record.get("fragment_symbols")
+    if groups is None:
+        store.record_check("fragments", False,
+                           "fragment composition was not recorded")
+        return "fragments: FAIL - fragment composition was not recorded"
+
+    left, right = groups
+    problems = []
+
+    if not left or not right:
+        problems.append("one fragment is empty")
+
+    for group in (left, right):
+        if sorted(group) == ["H", "H"]:
+            problems.append("one fragment is H2, which means a geminal pair "
+                            "was pulled apart rather than a bond broken")
+
+    passed = not problems
+    detail = f"broke {record.get('broken_bond', '?')}, giving {left} and {right}"
+    if problems:
+        detail += " - " + "; ".join(problems)
+
+    store.record_check("fragments", passed, detail)
+    return f"fragments: {'PASS' if passed else 'FAIL'} - {detail}"
+
+
 @tool
 def check_geometry() -> str:
     """Check the geometry is physically sensible.
@@ -645,11 +771,13 @@ def check_path_resolved() -> str:
 
     jumps = [abs(b - a) for a, b in zip(profile, profile[1:])]
     fraction = max(jumps) / ea
+    worst = int(np.argmax(jumps))
 
     passed = fraction < 0.6
-    detail = f"largest single step is {fraction:.0%} of the barrier"
+    detail = (f"largest single step is {fraction:.0%} of the barrier, "
+              f"between images {worst} and {worst + 1}")
     if not passed:
-        detail += " - rerun with more images"
+        detail += " - refine the path around those images"
 
     store.record_check("path_resolved", passed, detail)
     return f"path_resolved: {'PASS' if passed else 'FAIL'} - {detail}"
@@ -669,9 +797,22 @@ def validation_summary() -> str:
     detail = store.get("validation_detail", {})
     lines = [f"{'PASS' if ok else 'FAIL'}  {name}: {detail.get(name, '')}"
              for name, ok in checks.items()]
+
+    # CHANGED: name the checks that were never run, rather than
+    # summarising a partial set as though it were complete.
+    expected = {"convergence", "noise_floor", "dispersion",
+                "dispersion_consistent", "gas_reference", "fragments",
+                "geometry", "reaction_consistency", "endpoints_distinct",
+                "path_resolved"}
+    missing = sorted(expected - set(checks))
+
     lines.append("")
-    lines.append("ALL PASSED" if store.all_checks_passed()
-                 else "NOT ALL CHECKS PASSED - the run is not finished")
+    if missing:
+        lines.append(f"NOT ALL CHECKS WERE RUN - missing: {', '.join(missing)}")
+    elif store.all_checks_passed():
+        lines.append("ALL PASSED")
+    else:
+        lines.append("NOT ALL CHECKS PASSED - the run is not finished")
     return "\n".join(lines)
 
 
@@ -704,6 +845,9 @@ VALIDATION_TOOLS = [
     check_convergence,
     check_noise_floor,
     check_dispersion_relevance,
+    check_dispersion_consistent,
+    check_gas_reference_applied,
+    check_fragments_sensible,
     check_geometry,
     check_reaction_consistency,
     check_endpoints_distinct,
