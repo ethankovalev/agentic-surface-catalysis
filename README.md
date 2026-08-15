@@ -6,7 +6,7 @@ the SBH10 experimental reference set.
 
 ## Why this benchmark
 
-SBH10 (Sharada, Bligaard, Luntz, Kroes, Norskov; *J. Phys. Chem. C*
+SBH10 (Sharada, Bligaard, Luntz, Kroes, Nørskov; *J. Phys. Chem. C*
 2017, 121, 19807) is ten dissociation barriers on transition metal
 surfaces, referenced to molecular beam scattering, laser-assisted
 associative desorption, and thermal experiments.
@@ -18,7 +18,7 @@ agreement with reality, not with another calculation.
 
 **Dispersion is the discriminating axis.** In the original study the
 dispersion-corrected BEEF-vdW reached 0.14 eV mean error, beating both a
-meta-GGA and a screened hybrid functional - the reverse of the typical
+meta-GGA and a screened hybrid functional — the reverse of the typical
 gas-phase pattern. The model used here (UMA, `oc20` task) is trained on
 RPBE, which has no dispersion term at all. That is a sharp, testable
 hypothesis, not a vague gap.
@@ -42,23 +42,24 @@ The UMA checkpoint is gated: request access at
 ## Running
 
 ```bash
-python invoke.py --single H2_Cu111     # one reaction, verbose - start here
+python invoke.py --single H2_Cu111     # one reaction, verbose — start here
 python invoke.py --all                 # the full SBH10 set
 python invoke.py --task "..."          # ad-hoc task, not scored
 ```
 
-Start with `--single`. If the agent gets H2 on Cu(111) badly wrong,
-that is worth knowing on day one, not after ten runs.
+Start with `--single`. If the agent gets H₂ on Cu(111) badly wrong, that
+is worth knowing on day one, not after ten runs.
 
 ## Architecture
 
 A supervisor picks which worker acts next; workers report back to it.
 
-- **Structure_Agent** - builds the slab, places the adsorbate,
+- **Structure_Agent** — builds the slab, places the adsorbate,
   constructs the dissociated endpoint
-- **Simulation_Agent** - relaxes both endpoints, runs the
-  climbing-image NEB
-- **Validation_Agent** - runs the physical sanity checks
+- **Simulation_Agent** — relaxes the endpoints and the gas-phase
+  reference, runs the climbing-image NEB, converts the barrier to a
+  gas-phase reference
+- **Validation_Agent** — runs the physical sanity checks
 
 **One deliberate departure from the standard supervisor pattern: the
 supervisor cannot end the run.** `exit_gate` in `src/graph.py` reads the
@@ -69,13 +70,25 @@ guarantee lives in code, not in a prompt.
 
 ### The checks
 
+Every check is designed to work without knowing what the answer should
+be. None of them compares against the reference value.
+
 | Check | Catches |
 |---|---|
 | `convergence` | energies from non-converged optimisations |
 | `noise_floor` | results below the model's own ~0.009 eV MAE |
 | `dispersion` | adsorbate drifting away because RPBE has no vdW term |
 | `geometry` | atoms driven into the surface; barrier peak at an endpoint |
-| `magnitude` | barriers outside a physically plausible range |
+| `reaction_consistency` | endothermic reaction with a barrier below its reaction energy; chemically impossible magnitudes |
+| `endpoints_distinct` | a "barrier" between two states that turned out to be the same minimum |
+| `path_resolved` | a band too coarse to sample the transition state — one image-to-image step carrying most of the climb |
+
+`endpoints_distinct` is what makes a zero barrier interpretable. Two of
+the ten reactions (H₂ on Pt(111) and Ru(0001)) are genuinely
+non-activated, so a near-zero result is correct for those. Checking that
+the endpoints are physically different states distinguishes a real
+non-activated reaction from a failed calculation, without the validator
+being told which is which.
 
 ### Blind evaluation
 
@@ -85,45 +98,86 @@ happens in the runner, after the graph has returned. Any other
 arrangement measures how well the agent can curve-fit, not how well it
 can calculate.
 
+### Gas-phase referencing
+
+SBH10 barriers are measured relative to a **free molecule**, not to a
+physisorbed one. A NEB run between a physisorbed initial state and a
+dissociated final state therefore measures against the wrong reference,
+short by the physisorption well depth.
+
+The OC20 task is not trained on isolated molecules, so the fix is not to
+remove the slab. Instead `build_gas_reference` lifts the molecule ~8 Å
+clear of the same slab in the same cell, and the slab contribution
+cancels in the difference:
+
+well_depth = E_gasref − E_initial
+barrier_gas = barrier_neb + well_depth
+
+
+`compute_gas_referenced_barrier` performs this conversion and reports the
+well depth as a diagnostic. For H₂ on Cu the well is shallow and the two
+conventions nearly agree; for CH₄ on Ni or Ru, where dispersion binding
+is stronger, the correction is expected to matter more.
+
+## Current status
+
+One reaction has been run end to end. H₂/Cu(111) gave a barrier of
+**0.672 eV** against an SBH10 reference of 0.63 eV — but that run
+predates both the gas-phase referencing and the `path_resolved` check,
+and its energy profile jumped 0.525 eV in a single image-to-image step,
+which is 78% of the barrier. It needs rerunning with more images and
+proper referencing before it means anything.
+
+Treat this as evidence the pipeline works, not as a result.
+
 ## Project layout
 
-```
 sbh10-agent/
-├── config.py            settings: paths, thresholds, model name
-├── invoke.py            entry point / CLI
+├── config.py settings: paths, thresholds, model name
+├── invoke.py entry point / CLI
 ├── requirements.txt
-├── data/                put uma-s-1p2.pt here
+├── data/ put uma-s-1p2.pt here (gitignored)
+├── work/ scratch: .traj files (gitignored)
+├── outputs/ results JSON (gitignored)
 └── src/
-    ├── store.py         run-scoped results store
-    ├── calculators.py   UMA + D3 construction
-    ├── prompt.py        the three worker system prompts
-    ├── agent.py         create_agent helper
-    ├── tools.py         all structure/simulation/validation tools
-    ├── graph.py         supervisor graph + exit gate
-    └── benchmark.py     SBH10 reference table + blind runner
-```
+├── store.py run-scoped results store
+├── calculators.py UMA + D3 construction
+├── prompt.py the three worker system prompts
+├── agent.py tool-binding helper (not currently used by graph.py)
+├── tools.py all structure/simulation/validation tools
+├── graph.py supervisor graph + exit gate
+└── benchmark.py SBH10 reference table + blind runner
+
 
 ## What is not finished
 
-- **`SBH10` reference values are `None`.** Fill them in from Table 1 of
-  the paper (`src/benchmark.py`). Nothing can be scored until this is
-  done - this is the first thing to fix.
-- **Only two of ten reactions are stubbed.** Add the remaining eight
-  from the paper.
+- **Two of the ten reactions need stepped surfaces.** `N2_Ru0001_step`
+  and `CH4_Ni111_step` are measured at step sites, where under-
+  coordinated edge atoms lower the barrier substantially — N₂ on
+  Ru(0001) drops from 1.84 eV on the terrace to 0.40 eV at a step.
+  `build_slab` only produces flat terraces, so these two cannot
+  currently be computed correctly. No validation check will catch this:
+  both step values sit comfortably inside a plausible range.
+- **No site or orientation sampling.** One configuration per reaction,
+  so the reported barrier is not a minimum over configuration space.
+  Fragments can settle at atop sites when a hollow site is more stable.
 - **Site placement is approximate.** `place_adsorbate` picks ontop,
   bridge, or hollow from the first few top-layer atoms rather than doing
   a proper geometric site search.
-- **Dissociation endpoints are heuristic.** The longest internal bond is
-  split and the fragments slid apart. Works for diatomics; will need
-  attention for anything larger.
-- **No site or orientation sampling.** One configuration per reaction,
-  so the reported barrier is not a minimum over configuration space.
+- **The fragment-radius estimate is crude for polyatomics.**
+  `build_dissociated_endpoint` derives the starting height from the mean
+  covalent radius of all adsorbate atoms. For CH₄ that averages one
+  carbon with four hydrogens and underestimates where a CH₃ fragment
+  should sit, so the four CH₄ reactions start from a worse geometry than
+  the H₂ ones.
+- **No repeat runs.** Every number so far is a single run with no
+  estimate of its own variability.
 
 ## Known limitations of the underlying model
 
 - OC20/RPBE has no dispersion term. This is why D3 is included in the
   relaxation loop by default (`with_d3=True`), not applied afterward as
-  a single-point correction - the geometry shift under dispersion is
+  a single-point correction — the geometry shift under dispersion is
   most of the effect.
 - D3 is known to overbind on some metal surfaces. Agreement with
   experiment should be read as suggestive, not confirmatory, without a
@@ -132,8 +186,23 @@ sbh10-agent/
   0.009 eV. Any computed quantity below that is not resolvable from
   zero, regardless of how tightly the optimiser converges.
 
+## Troubleshooting
+
+**`create_react_agent() got unexpected keyword arguments:
+{'state_modifier': ...}`** — LangGraph renamed this argument to
+`prompt`. Change all three occurrences in `src/graph.py`.
+
+**`KeyError: 'messages'`** — some LangGraph versions yield node-keyed
+chunks from `.stream()` rather than full state. `run_worker` in
+`src/graph.py` passes `stream_mode="values"` and guards on the key
+being present; if you see this, check both are in place.
+
+**`zsh: bad assignment`** when setting the API key — shell variable
+names cannot contain hyphens. It is `ANTHROPIC_API_KEY` with
+underscores, and no spaces around the `=`.
+
 ## Reference
 
-Sharada, S. M.; Bligaard, T.; Luntz, A. C.; Kroes, G.-J.; Norskov, J. K.
+Sharada, S. M.; Bligaard, T.; Luntz, A. C.; Kroes, G.-J.; Nørskov, J. K.
 *SBH10: A Benchmark Database of Barrier Heights on Transition Metal
-Surfaces.* J. Phys. Chem. C 2017, 121 (36), 19807-19815.
+Surfaces.* J. Phys. Chem. C 2017, 121 (36), 19807–19815.

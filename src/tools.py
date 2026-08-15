@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 from ase.build import add_adsorbate, fcc100, fcc110, fcc111, hcp0001, molecule
+from ase.data import atomic_numbers, covalent_radii
 from ase.constraints import FixAtoms
 from ase.io import read, write
 from ase.optimize import BFGS, FIRE
@@ -176,21 +177,19 @@ def place_adsorbate(species: str, height: float = 2.5,
 
 
 @tool
-def build_dissociated_endpoint(separation: float = 3.0,
-                               height: float = 1.5) -> str:
+def build_dissociated_endpoint(separation: float = None,
+                               height: float = None) -> str:
     """Build the dissociated final state by pulling the molecule apart.
 
-    Splits the adsorbate into two fragments along its longest internal
-    bond, slides them apart in the surface plane, and lowers both onto
-    the metal so they can chemisorb.
+    separation, height: leave as None to derive from the covalent radii
+    of the atoms actually involved. A Cu-H bond and a Ni-C bond are
+    different lengths, so a fixed number is wrong for one of them.
+    Override only if you have a specific reason to.
 
-    separation: target distance between the two fragment centres, in
-                Angstrom. Keep it well under the in-plane cell vector or
-                each fragment meets its own periodic image.
-    height: height of each fragment above the surface plane. About 1.5 Å
-            for atomic H, nearer 2.1 Å for a carbon-containing fragment.
-
-    Reads work/initial.traj, saves work/final.traj.
+    Note this sets the STARTING geometry only - the relaxation that
+    follows will refine it. What the starting height really determines
+    is which local minimum you fall into, so a fragment can still end
+    up at an atop site when a hollow site is more stable.
     """
     init_file = Path(_path("initial.traj"))
     if not init_file.exists():
@@ -203,6 +202,14 @@ def build_dissociated_endpoint(separation: float = 3.0,
 
     if len(ads) < 2:
         return "FAILED: fewer than two adsorbate atoms; nothing to dissociate."
+
+    r_metal = covalent_radii[atomic_numbers[atoms[metal[0]].symbol]]
+    r_ads = sum(covalent_radii[atoms[i].number] for i in ads) / len(ads)
+
+    if height is None:
+        height = r_metal + r_ads
+    if separation is None:
+        separation = 2.5 * (r_metal + r_ads)
 
     # Longest internal distance defines the bond being broken.
     best, pair = -1.0, (ads[0], ads[1])
@@ -365,6 +372,74 @@ def run_neb(n_images: int = 10, with_d3: bool = True,
             f"{reaction_energy:.3f} eV, peak at image {peak} of "
             f"{len(images) - 1}.")
 
+@tool
+def build_gas_reference(height: float = 8.0) -> str:
+    """Build the gas-phase reference: same system, molecule far away.
+
+    SBH10 barriers are referenced to a free molecule, not to a
+    physisorbed one. The OC20 task is not trained on isolated
+    molecules, so instead of removing the slab we lift the molecule
+    clear of it. The slab contribution then cancels in the difference,
+    and the model only ever sees a slab plus adsorbate.
+
+    Reads work/initial.traj, saves work/gasref.traj.
+    """
+    src = Path(_path("initial.traj"))
+    if not src.exists():
+        return "FAILED: no initial.traj. Call place_adsorbate first."
+
+    atoms = read(str(src))
+    tags = atoms.get_tags()
+    n_metal = sum(1 for t in tags if t != 2)
+
+    z_metal = max(atoms.positions[:n_metal, 2])
+    z_low = min(atoms.positions[n_metal:, 2])
+    atoms.positions[n_metal:, 2] += (z_metal + height) - z_low
+
+    # The cell must be tall enough that the lifted molecule does not
+    # meet the slab's periodic image from above.
+    cell = atoms.get_cell()
+    if cell[2, 2] < z_metal + height + 10.0:
+        cell[2, 2] = z_metal + height + 10.0
+        atoms.set_cell(cell)
+
+    write(_path("gasref.traj"), atoms)
+    store.put("gasref", {"height": height})
+    return (f"Built gas-phase reference with the molecule {height:.1f} A "
+            f"above the surface. Saved to gasref.traj. Relax it, then "
+            f"call compute_gas_referenced_barrier.")
+
+
+@tool
+def compute_gas_referenced_barrier() -> str:
+    """Convert the NEB barrier to a gas-phase reference.
+
+    The NEB measures from the physisorbed state. Experiment measures
+    from a free molecule. The difference is the physisorption well
+    depth, which this reports as a diagnostic - if it is a few meV the
+    two conventions agree and the distinction does not matter for this
+    system.
+    """
+    neb = store.get("neb")
+    initial = store.get("initial_relaxed")
+    gasref = store.get("gasref_relaxed")
+
+    if not all((neb, initial, gasref)):
+        missing = [n for n, v in (("neb", neb), ("initial", initial),
+                                  ("gasref", gasref)) if not v]
+        return f"FAILED: missing {missing}. Relax the gas reference first."
+
+    well_depth = gasref["energy_eV"] - initial["energy_eV"]
+    barrier_gas = neb["barrier_eV"] + well_depth
+
+    store.put("well_depth_eV", float(well_depth))
+    store.put("barrier_gas_eV", float(barrier_gas))
+    store.put("barrier_eV", float(barrier_gas))   # this is what gets scored
+
+    return (f"Physisorption well depth {well_depth:.3f} eV. "
+            f"Barrier from physisorbed state {neb['barrier_eV']:.3f} eV, "
+            f"from gas phase {barrier_gas:.3f} eV.")
+
 
 @tool
 def read_results() -> str:
@@ -392,7 +467,7 @@ def check_convergence() -> str:
     usable, however plausible the number looks.
     """
     failures = []
-    for key in ("initial_relaxed", "final_relaxed", "neb"):
+    for key in ("initial_relaxed", "final_relaxed", "gasref_relaxed", "neb"):
         record = store.get(key)
         if record is None:
             failures.append(f"{key} was never run")
@@ -490,30 +565,94 @@ def check_geometry() -> str:
     return f"geometry: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
+def _longest_bond(atoms) -> float:
+    """Longest distance between any two adsorbate atoms."""
+    tags = atoms.get_tags()
+    ads = [i for i in range(len(atoms)) if tags[i] == 2]
+    return max(atoms.get_distance(i, j, mic=True)
+               for i in ads for j in ads if i < j)
+
+
 @tool
-def check_barrier_magnitude() -> str:
-    """Check the barrier is in a physically plausible range.
+def check_reaction_consistency() -> str:
+    """Check the barrier is consistent with the reaction energetics.
 
-    Dissociative chemisorption barriers on transition metals are
-    typically 0.1 to 2.5 eV. A near-zero barrier usually means the
-    endpoints are not genuinely distinct; a very large one usually means
-    the dissociated endpoint is badly constructed.
+    An endothermic reaction cannot have a barrier below its reaction
+    energy - the peak must sit at least as high as the final state. And
+    a barrier above ~5 eV on a metal surface means a badly built
+    endpoint, not difficult chemistry.
     """
-    barrier = store.get("barrier_eV")
-    if barrier is None:
-        store.record_check("magnitude", False, "no barrier computed")
-        return "magnitude: FAIL - no barrier computed"
+    neb = store.get("neb")
+    if neb is None:
+        store.record_check("reaction_consistency", False, "no NEB run")
+        return "reaction_consistency: FAIL - no NEB run"
 
-    passed = 0.05 < barrier < 3.0
-    if barrier <= 0.05:
-        detail = f"{barrier:.3f} eV is implausibly small - check endpoints differ"
-    elif barrier >= 3.0:
-        detail = f"{barrier:.3f} eV is implausibly large - check final state"
+    ea, dE = neb["barrier_eV"], neb["reaction_energy_eV"]
+
+    if dE > 0 and ea < dE - 0.01:
+        passed, detail = False, f"barrier {ea:.3f} eV is below reaction energy {dE:.3f} eV"
+    elif ea > 5.0:
+        passed, detail = False, f"barrier {ea:.3f} eV is chemically unreasonable"
     else:
-        detail = f"{barrier:.3f} eV is plausible"
+        passed, detail = True, f"barrier {ea:.3f} eV, reaction energy {dE:.3f} eV"
 
-    store.record_check("magnitude", passed, detail)
-    return f"magnitude: {'PASS' if passed else 'FAIL'} - {detail}"
+    store.record_check("reaction_consistency", passed, detail)
+    return f"reaction_consistency: {'PASS' if passed else 'FAIL'} - {detail}"
+
+
+@tool
+def check_endpoints_distinct() -> str:
+    """Check the two endpoints are genuinely different states.
+
+    This is what makes a zero barrier interpretable. Zero between two
+    distinct minima is a real non-activated reaction. Zero because both
+    endpoints relaxed into the same structure is not a result at all.
+    """
+    try:
+        d0 = _longest_bond(read(_path("initial.traj")))
+        d1 = _longest_bond(read(_path("final.traj")))
+    except Exception as exc:
+        store.record_check("endpoints_distinct", False, str(exc))
+        return f"endpoints_distinct: FAIL - {exc}"
+
+    passed = (d1 - d0) > 0.8
+    detail = f"adsorbate bond {d0:.2f} -> {d1:.2f} A"
+    if not passed:
+        detail += " - endpoints look like the same state"
+
+    store.record_check("endpoints_distinct", passed, detail)
+    return f"endpoints_distinct: {'PASS' if passed else 'FAIL'} - {detail}"
+
+
+@tool
+def check_path_resolved() -> str:
+    """Check the band actually samples the barrier.
+
+    If one image-to-image step accounts for most of the climb, the
+    transition state sits inside that gap and the reported barrier is a
+    lower bound on a shape you have not sampled. The fix is more images.
+    """
+    neb = store.get("neb")
+    if neb is None:
+        store.record_check("path_resolved", False, "no NEB run")
+        return "path_resolved: FAIL - no NEB run"
+
+    profile, ea = neb["profile_eV"], neb["barrier_eV"]
+
+    if ea < 0.1:
+        store.record_check("path_resolved", True, "path nearly flat")
+        return "path_resolved: PASS - path nearly flat, nothing to resolve"
+
+    jumps = [abs(b - a) for a, b in zip(profile, profile[1:])]
+    fraction = max(jumps) / ea
+
+    passed = fraction < 0.6
+    detail = f"largest single step is {fraction:.0%} of the barrier"
+    if not passed:
+        detail += " - rerun with more images"
+
+    store.record_check("path_resolved", passed, detail)
+    return f"path_resolved: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
 @tool
@@ -540,6 +679,7 @@ def validation_summary() -> str:
 # Helpers
 # ======================================================================
 
+
 def _closest_contact(atoms, n_metal: int) -> float:
     """Shortest distance from any adsorbate atom to any metal atom."""
     if n_metal >= len(atoms):
@@ -553,12 +693,20 @@ def _closest_contact(atoms, n_metal: int) -> float:
 
 
 STRUCTURE_TOOLS = [build_slab, place_adsorbate, build_dissociated_endpoint]
-SIMULATION_TOOLS = [relax_structure, run_neb, read_results]
+SIMULATION_TOOLS = [
+    relax_structure,
+    run_neb,
+    build_gas_reference,
+    compute_gas_referenced_barrier,
+    read_results,
+]
 VALIDATION_TOOLS = [
     check_convergence,
     check_noise_floor,
     check_dispersion_relevance,
     check_geometry,
-    check_barrier_magnitude,
+    check_reaction_consistency,
+    check_endpoints_distinct,
+    check_path_resolved,
     validation_summary,
 ]

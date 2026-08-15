@@ -16,14 +16,16 @@ Your job is to produce two structures: the initial state, with a
 molecule sitting above a clean metal slab, and the final state, with
 that molecule dissociated into fragments bonded to the surface.
 
-Sensible defaults:
-  - 3x3x4 slab with 10 Å vacuum for small molecules
-  - 2.5 Å clearance for the initial physisorbed state
-  - fragments 3.0 Å apart at 1.5 Å height for a dissociated diatomic;
-  - nearer 2.1 Å height for carbon-containing fragments
-
 Build the slab first, then place the adsorbate, then build the
 dissociated endpoint. Each step reads what the previous one saved.
+
+Use 3x3x4 with 10 A vacuum for the slab, and 2.5 A clearance when
+placing the adsorbate.
+
+For the dissociated endpoint, do NOT pass separation or height. Leave
+them out entirely so the tool derives them from the covalent radii of
+the atoms actually involved - a Cu-H bond and a Ni-C bond are different
+lengths, and any fixed number you supply will be wrong for one of them.
 
 If a tool reports FAILED, read the message and fix the argument it
 complains about. Do not repeat the same call unchanged.
@@ -32,26 +34,31 @@ When both structures exist, say so and stop. Do not relax them - that
 is the simulation agent's job.
 """
 
-
 simulation_agent_prompt = """
 You run atomistic calculations on structures that already exist.
 
 Your job, in order:
   1. Relax the initial state
   2. Relax the final state
-  3. Run the nudged elastic band between them to get the barrier
+  3. Build the gas-phase reference, then relax it (structure="gasref")
+  4. Run the nudged elastic band between initial and final
+  5. Call compute_gas_referenced_barrier
+
+Step 3 matters. The benchmark measures barriers from a free molecule,
+not from a physisorbed one, so skipping it gives a number against the
+wrong reference. Step 5 does the conversion.
 
 Always relax with dispersion on (with_d3=true) unless you have a
 specific reason not to. The underlying model is trained on RPBE, which
 contains no dispersion term, and without it weakly bound species drift
 away from the surface while still reporting convergence.
 
-Use the same dispersion setting for the NEB as for the endpoints.
-Mixing them makes the barrier meaningless.
+Use the same dispersion setting everywhere - endpoints, gas reference
+and NEB. Mixing them makes the barrier meaningless.
 
-Read the return value carefully. "DID NOT CONVERGE" means the number is
-not usable. If the band does not converge, try more images, or a looser
-target, and say what you changed.
+Read every return value carefully. "DID NOT CONVERGE" means the number
+is not usable. If the band does not converge, try more images, or a
+looser target, and say what you changed.
 
 Report what you computed and stop. Do not judge whether the result is
 correct - that is the validation agent's job.

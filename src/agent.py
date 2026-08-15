@@ -1,26 +1,26 @@
 """
-Agent construction helper.
+Worker agent construction.
 
-Binds a set of tools to an LLM behind a system prompt. The tool names go
-into the prompt so the model knows what it can reach for; everything
-else it learns from the tool docstrings.
+A tool-bound LLM behind a system message.
 """
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from functools import partial
+
+from langchain_core.messages import SystemMessage
 
 
-def create_agent(llm, tools, prompt_content: str, system_message: str = ""):
-    """Return a prompt-and-tools chain ready to invoke."""
-    tools_name = [t.name for t in tools]
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                f"{prompt_content}\n\nTools available: {tools_name}.",
-            ),
-            MessagesPlaceholder(variable_name="messages"),
-        ]
-    )
-    prompt = prompt.partial(system_message=system_message)
-    prompt = prompt.partial(tool_names=", ".join(tools_name))
-    return prompt | llm.bind_tools(tools)
+def _describe_tools(tools) -> str:
+    return ", ".join(t.name for t in tools)
+
+
+def _invoke_worker(llm_with_tools, system_text, messages):
+    return llm_with_tools.invoke([SystemMessage(content=system_text)] + list(messages))
+
+
+def create_agent(llm, tools, instructions: str):
+    """Return a callable: pass it a message list, get back the model's
+    response, tools already bound and a system message already attached.
+    """
+    system_text = f"{instructions}\n\nAvailable tools: {_describe_tools(tools)}."
+    llm_with_tools = llm.bind_tools(tools)
+    return partial(_invoke_worker, llm_with_tools, system_text)
