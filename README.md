@@ -134,25 +134,20 @@ Treat this as evidence the pipeline works, not as a result.
 
 ```text
 agentic-surface-catalysis/
-  README.md
-  requirements.txt
-  .gitignore
-  config.py
-  prompts.py
-  main.py
-  src/
-    __init__.py
-    tools.py
-    store.py
-    calculators.py
-  benchmarks/
-    sbh10.py
-  tests/
-    test_tools.py
-    test_checks.py
-    test_endpoint_bonding.py
-  docs/
-    VALIDATION.md
+├── .gitignore
+├── README.md
+├── config.py                  # thresholds and paths
+├── invoke.py                  # entry point
+├── requirements.txt
+└── src/
+    ├── __init__.py
+    ├── agent.py               # builds the three agents
+    ├── benchmark.py           # SBH10 reference barriers
+    ├── calculators.py         # UMA calculator with optional D3
+    ├── graph.py               # supervisor routing between agents
+    ├── prompt.py              # the three agent prompts
+    ├── store.py               # run state and check results
+    └── tools.py               # structure, simulation and validation tools
 ```
 
 
