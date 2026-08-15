@@ -132,21 +132,28 @@ Treat this as evidence the pipeline works, not as a result.
 
 ## Project layout
 
-sbh10-agent/
-├── config.py settings: paths, thresholds, model name
-├── invoke.py entry point / CLI
-├── requirements.txt
-├── data/ put uma-s-1p2.pt here (gitignored)
-├── work/ scratch: .traj files (gitignored)
-├── outputs/ results JSON (gitignored)
-└── src/
-├── store.py run-scoped results store
-├── calculators.py UMA + D3 construction
-├── prompt.py the three worker system prompts
-├── agent.py tool-binding helper (not currently used by graph.py)
-├── tools.py all structure/simulation/validation tools
-├── graph.py supervisor graph + exit gate
-└── benchmark.py SBH10 reference table + blind runner
+```text
+agentic-surface-catalysis/
+  README.md
+  requirements.txt
+  .gitignore
+  config.py
+  prompts.py
+  main.py
+  src/
+    __init__.py
+    tools.py
+    store.py
+    calculators.py
+  benchmarks/
+    sbh10.py
+  tests/
+    test_tools.py
+    test_checks.py
+    test_endpoint_bonding.py
+  docs/
+    VALIDATION.md
+```
 
 
 ## What is not finished
