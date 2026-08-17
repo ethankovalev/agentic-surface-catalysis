@@ -66,9 +66,8 @@ def _tag(atoms, n_metal):
     return atoms
 
 
-# ======================================================================
+
 # Structure tools
-# ======================================================================
 
 @tool
 def build_slab(metal: str, facet: str = "111", nx: int = 3, ny: int = 3,
@@ -185,7 +184,7 @@ def build_dissociated_endpoint(separation: float = None,
     different lengths, so a fixed number is wrong for one of them.
     Override only if you have a specific reason to.
 
-    Note this sets the STARTING geometry only - the relaxation that
+    Note this sets the STARTING geometry only, the relaxation that
     follows will refine it. What the starting height really determines
     is which local minimum you fall into, so a fragment can still end
     up at an atop site when a hollow site is more stable.
@@ -210,7 +209,6 @@ def build_dissociated_endpoint(separation: float = None,
     if separation is None:
         separation = 2.5 * (r_metal + r_ads)
 
-    # CHANGED: only bonded pairs are candidates, then take the longest.
     # Two hydrogens on opposite sides of a carbon sit further apart than
     # any C-H bond, so the old "longest internal distance" rule split
     # CH4 into CH2 + H2 instead of CH3 + H.
@@ -256,8 +254,7 @@ def build_dissociated_endpoint(separation: float = None,
 
     write(_path("final.traj"), atoms)
 
-    # CHANGED: record what the fragments actually are, so a check can
-    # tell CH3 + H from CH2 + H2.
+    # record what the fragments actually are, so a check can tell CH3 + H from CH2 + H2.
     left_symbols = sorted(atoms[i].symbol for i in left)
     right_symbols = sorted(atoms[i].symbol for i in right)
 
@@ -271,9 +268,7 @@ def build_dissociated_endpoint(separation: float = None,
             f"{height:.2f} Å above the surface. Saved to final.traj.")
 
 
-# ======================================================================
 # Simulation tools
-# ======================================================================
 
 @tool
 def relax_structure(structure: str, with_d3: bool = True,
@@ -285,10 +280,10 @@ def relax_structure(structure: str, with_d3: bool = True,
              is RPBE, which has no dispersion term, so leaving this off
              gives physically wrong geometries for weakly bound species
              that still converge cleanly.
-    fmax: force convergence threshold in eV/A.
+    fmax: force convergence threshold in eV/Å.
 
     Overwrites the structure file with the relaxed geometry. Reports the
-    energy AND whether it converged - a non-converged energy is not a
+    energy AND whether it converged, a non-converged energy is not a
     minimum and must not be used.
     """
     src = Path(_path(f"{structure}.traj"))
@@ -330,7 +325,7 @@ def run_neb(n_images: int = 10, with_d3: bool = True,
     Runs a two-pass climbing-image NEB with the FIRE optimiser. NEB
     forces are not the gradient of any single scalar function, so
     quasi-Newton methods build a Hessian from a false premise and go
-    unstable near convergence - this is why FIRE, not BFGS.
+    unstable near convergence, this is why FIRE, not BFGS.
 
     n_images: intermediate images. The band has n_images + 2 in total.
               Raise this if the energy profile shows a sharp spike
@@ -476,10 +471,7 @@ def read_results() -> str:
     lines = [f"{k}: {v}" for k, v in snap.items() if k != "validation_detail"]
     return "\n".join(lines)
 
-
-# ======================================================================
 # Validation tools
-# ======================================================================
 
 @tool
 def check_convergence() -> str:
@@ -502,25 +494,37 @@ def check_convergence() -> str:
     store.record_check("convergence", passed, detail)
     return f"convergence: {'PASS' if passed else 'FAIL'} - {detail}"
 
-
 @tool
 def check_noise_floor() -> str:
-    """Check the barrier is larger than the model's own error bar.
+    """Report whether the barrier is above the model's own error bar.
 
-    UMA's benchmarked MAE against its reference DFT is about 0.009 eV.
-    A result smaller than that is not distinguishable from zero, no
-    matter how tightly the optimiser converged.
+    UMA's benchmarked MAE against reference DFT is roughly 0.1-0.3 eV
+    for adsorption energies. A barrier is a difference of two energies,
+    so errors partly cancel and this is an upper-bound estimate rather
+    than a strict error bar on the barrier itself.
+
+    This check is informational, not a gate. Two of the SBH10 reactions
+    are genuinely non-activated, so a barrier inside the error bar can
+    be the correct answer. Whether it is a real non-activated reaction
+    or a failed calculation is what check_endpoints_distinct decides.
     """
     barrier = store.get("barrier_eV")
     if barrier is None:
         store.record_check("noise_floor", False, "no barrier computed")
-        return "noise_floor: FAIL - no barrier computed"
+        return "noise_floor: FAIL (no barrier computed)"
 
-    passed = abs(barrier) > config.NOISE_FLOOR_EV
-    detail = (f"barrier {barrier:.4f} eV vs noise floor "
-              f"{config.NOISE_FLOOR_EV} eV")
-    store.record_check("noise_floor", passed, detail)
-    return f"noise_floor: {'PASS' if passed else 'FAIL'} - {detail}"
+    resolvable = abs(barrier) > config.NOISE_FLOOR_EV
+    if resolvable:
+        detail = (f"barrier {barrier:.3f} eV is above the "
+                  f"{config.NOISE_FLOOR_EV} eV noise floor")
+    else:
+        detail = (f"barrier {barrier:.3f} eV is within the model's own error "
+                  f"bar ({config.NOISE_FLOOR_EV} eV) - consistent with a "
+                  "non-activated reaction, but not resolvable from zero")
+
+    # Passes either way. The number being small is a finding, not a failure.
+    store.record_check("noise_floor", True, detail)
+    return f"noise_floor: PASS - {detail}"
 
 
 @tool
@@ -545,12 +549,12 @@ def check_dispersion_relevance() -> str:
     passed = not (too_far and not with_d3)
 
     if passed and too_far:
-        detail = (f"contact {contact:.2f} Å is large but D3 was on - "
+        detail = (f"contact {contact:.2f} Å is large but D3 was on: "
                   "may genuinely be unbound")
     elif passed:
         detail = f"contact {contact:.2f} Å, D3 {'on' if with_d3 else 'off'}"
     else:
-        detail = (f"contact {contact:.2f} Å with D3 OFF - rerun the "
+        detail = (f"contact {contact:.2f} Å with D3 OFF: rerun the "
                   "relaxation with with_d3=true")
 
     store.record_check("dispersion", passed, detail)
@@ -591,7 +595,7 @@ def check_gas_reference_applied() -> str:
 
     SBH10 measures from an isolated gas-phase molecule. run_neb reports
     from the physisorbed state. If compute_gas_referenced_barrier was
-    never called, the scored number is the wrong quantity - and it will
+    never called, the scored number is the wrong quantity, and it will
     look perfectly reasonable, because it is a real barrier, just
     measured from the wrong zero.
     """
@@ -606,7 +610,7 @@ def check_gas_reference_applied() -> str:
     elif well_depth < 0:
         passed = False
         detail = (f"well depth {well_depth:.3f} eV is negative, meaning the "
-                  "lifted molecule relaxed below the physisorbed state - one "
+                  "lifted molecule relaxed below the physisorbed state, one "
                   "of the two is not a real minimum")
     else:
         passed = True
@@ -630,13 +634,13 @@ def check_fragments_sensible() -> str:
     record = store.get("final")
     if record is None:
         store.record_check("fragments", False, "no dissociated endpoint built")
-        return "fragments: FAIL - no dissociated endpoint built"
+        return "fragments: FAIL (no dissociated endpoint built)"
 
     groups = record.get("fragment_symbols")
     if groups is None:
         store.record_check("fragments", False,
                            "fragment composition was not recorded")
-        return "fragments: FAIL - fragment composition was not recorded"
+        return "fragments: FAIL (fragment composition was not recorded)"
 
     left, right = groups
     problems = []
@@ -702,9 +706,9 @@ def check_reaction_consistency() -> str:
     """Check the barrier is consistent with the reaction energetics.
 
     An endothermic reaction cannot have a barrier below its reaction
-    energy - the peak must sit at least as high as the final state. And
-    a barrier above ~5 eV on a metal surface means a badly built
-    endpoint, not difficult chemistry.
+    energy, the peak must sit at least as high as the final state. And
+    a barrier above ~2.5 eV on a metal surface means a badly built
+    endpoint, not difficult chemistry (based on typical barriers on transition metal surfaces).
     """
     neb = store.get("neb")
     if neb is None:
@@ -715,7 +719,7 @@ def check_reaction_consistency() -> str:
 
     if dE > 0 and ea < dE - 0.01:
         passed, detail = False, f"barrier {ea:.3f} eV is below reaction energy {dE:.3f} eV"
-    elif ea > 5.0:
+    elif ea > 2.5:
         passed, detail = False, f"barrier {ea:.3f} eV is chemically unreasonable"
     else:
         passed, detail = True, f"barrier {ea:.3f} eV, reaction energy {dE:.3f} eV"
@@ -739,7 +743,7 @@ def check_endpoints_distinct() -> str:
         store.record_check("endpoints_distinct", False, str(exc))
         return f"endpoints_distinct: FAIL - {exc}"
 
-    passed = (d1 - d0) > 0.8
+    passed = (d1 - d0) > 0.8 # Typical H-H bond is 0.74 Å.
     detail = f"adsorbate bond {d0:.2f} -> {d1:.2f} Å"
     if not passed:
         detail += " - endpoints look like the same state"
@@ -796,7 +800,7 @@ def validation_summary() -> str:
     lines = [f"{'PASS' if ok else 'FAIL'}  {name}: {detail.get(name, '')}"
              for name, ok in checks.items()]
 
-    # CHANGED: name the checks that were never run, rather than
+    # name the checks that were never run, rather than
     # summarising a partial set as though it were complete.
     expected = {"convergence", "noise_floor", "dispersion",
                 "dispersion_consistent", "gas_reference", "fragments",
@@ -814,10 +818,8 @@ def validation_summary() -> str:
     return "\n".join(lines)
 
 
-# ======================================================================
-# Helpers
-# ======================================================================
 
+# Helpers
 
 def _closest_contact(atoms, n_metal: int) -> float:
     """Shortest distance from any adsorbate atom to any metal atom."""

@@ -1,11 +1,7 @@
 """
 Prompts.
-In agent code the prompts are the logic. Treat edits here as seriously
-as edits to tools.py.
 
-Note what is deliberately absent: none of these prompts mentions the
-experimental reference barrier, because no agent may see it. The whole
-point of the benchmark is that the calculation is performed blind.
+In agent code the prompts are the logic.
 """
 
 structure_agent_prompt = """
@@ -23,14 +19,14 @@ placing the adsorbate.
 
 For the dissociated endpoint, do NOT pass separation or height. Leave
 them out entirely so the tool derives them from the covalent radii of
-the atoms actually involved - a Cu-H bond and a Ni-C bond are different
-lengths, and any fixed number you supply will be wrong for one of them.
+the atoms actually involved (a Cu-H bond and a Ni-C bond are different
+lengths, and any fixed number you supply will be wrong for one of them.)
 
 If a tool reports FAILED, read the message and fix the argument it
 complains about. Do not repeat the same call unchanged.
 
-When both structures exist, say so and stop. Do not relax them - that
-is the simulation agent's job.
+When both structures exist, say so and stop. Do not relax them (that
+is the simulation agent's job.)
 """
 
 simulation_agent_prompt = """
@@ -46,8 +42,8 @@ Your job, in order:
 Step 3 matters. The benchmark measures barriers from a free molecule,
 not from a physisorbed one, so skipping it gives a number against the
 wrong reference. Step 5 does the conversion, and until it runs the
-scored barrier is still measured from the physisorbed state - a real
-number, but not the one being benchmarked.
+scored barrier is still measured from the physisorbed state (a real
+number, but not the one being benchmarked).
 
 Call read_results if you are unsure what has already been computed.
 On a rerun, only redo the stages that actually need redoing.
@@ -55,9 +51,9 @@ On a rerun, only redo the stages that actually need redoing.
 Always relax with dispersion on (with_d3=true). The underlying model is
 trained on RPBE, which contains no dispersion term, and without it
 weakly bound species drift away from the surface while still reporting
-convergence. Use the same setting everywhere - endpoints, gas reference
+convergence. Use the same setting everywhere (endpoints, gas reference
 and NEB. A barrier assembled from a mix of settings is not a barrier on
-any single energy surface.
+any single energy surface.)
 
 Read every return value carefully. "DID NOT CONVERGE" means the number
 is not usable.
@@ -76,7 +72,7 @@ being wrong. Fix the path instead:
 Say what you changed and why.
 
 Report what you computed and stop. Do not judge whether the result is
-correct - that is the validation agent's job.
+correct (that is the validation agent's job.)
 """
 
 
@@ -103,12 +99,9 @@ whoever can fix it:
   - a saddle point failure (zero or multiple imaginary modes) means
     the simulation agent should rerun the NEB with tighter fmax or
     local refinement around the peak
-  - a missing ZPE correction means the simulation agent should run
-    vibrational analysis before computing the barrier
   - a dispersion mismatch means the whole chain must be rerun with a
-    single consistent setting - partial reruns are not valid
-  - a magnetism failure means the structure agent should rebuild with
-    initial moments set.
+    single consistent setting (partial reruns are not valid).
+  
 
 Never assert that a result is acceptable when a check has failed.
 """

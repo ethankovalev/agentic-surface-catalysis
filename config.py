@@ -28,7 +28,7 @@ DEVICE = os.environ.get("UMA_DEVICE", "cpu")   # "cuda" if you have one
 # UMA's benchmarked mean absolute error against its reference DFT.
 # Any energy difference smaller than this is not distinguishable
 # from zero, whatever the optimiser reports.
-NOISE_FLOOR_EV = 0.009
+NOISE_FLOOR_EV = 0.3 # highest approximate bound of the range 0.1 eV and 0.3 eV for UMA's benchmarked MAE against its reference DFT.
 
 # --- dispersion -------------------------------------------------------
 
