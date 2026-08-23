@@ -1,0 +1,11 @@
+work/
+outputs/
+data/
+.venv/
+.venv-mace/
+__pycache__/
+*.pyc
+*.model
+*.pt
+*.ckpt
+

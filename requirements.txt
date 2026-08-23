@@ -1,0 +1,9 @@
+ase
+fairchem-core
+torch
+torch-dftd
+numpy
+langgraph
+langchain-core
+langchain-anthropic
+pydantic
