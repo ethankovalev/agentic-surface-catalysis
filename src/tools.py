@@ -484,7 +484,7 @@ def relax_structure(structure: str, model_key: str = None, with_d3: bool = True,
     store.put("model_key", model_key)
 
     atoms = read(str(src))
-    atoms.calc = new_calculator(with_d3=with_d3)
+    atoms.calc = new_calculator(model_key, with_d3=with_d3)
 
     opt = BFGS(atoms, logfile="-")
     converged = opt.run(fmax=fmax, steps=max_steps)
@@ -541,12 +541,12 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     images = [start]
     for _ in range(n_images):
         img = start.copy()
-        img.calc = new_calculator(with_d3=with_d3)
+        img.calc = new_calculator(model_key, with_d3=with_d3)
         images.append(img)
     images.append(end)
 
-    start.calc = new_calculator(with_d3=with_d3)
-    end.calc = new_calculator(with_d3=with_d3)
+    start.calc = new_calculator(model_key, with_d3=with_d3)
+    end.calc = new_calculator(model_key, with_d3=with_d3)
 
     neb = NEB(images, climb=False, k=config.NEB_SPRING_K,
               method="improvedtangent")
