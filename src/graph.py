@@ -81,7 +81,7 @@ system_prompt = f"""
 
 
 class routeResponse(BaseModel):
-    next: Literal[*options]
+    next: Literal[tuple(options)]
 
 
 prompt = ChatPromptTemplate.from_messages(
