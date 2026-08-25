@@ -126,6 +126,7 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
     except Exception as exc:
         error_note = f"{type(exc).__name__}: {exc}"
         print(f"  run failed: {error_note}")
+        import traceback; traceback.print_exc()
 
     checks = store.validation()
     ref = spec.get("reference_eV")

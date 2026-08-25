@@ -38,6 +38,16 @@ def main():
     if not config.ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
+    # Initialise torch.det's lazy LAPACK backend on the MAIN thread.
+    # LangGraph runs tools in a thread pool, and this lazy init is not
+    # thread-safe - UMA calls torch.det on the cell matrix during forward,
+    # which raises "lazy wrapper should be called at most once" if it first
+    # happens inside a worker thread.
+    import torch
+    if torch.cuda.is_available():
+        torch.det(torch.eye(3, device="cuda"))
+    torch.det(torch.eye(3))
+
     graph = create_graph()
 
     if args.task:

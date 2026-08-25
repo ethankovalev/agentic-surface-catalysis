@@ -32,9 +32,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 # invalidates every dispersion comparison in the benchmark.
 DEVICE = os.environ.get("MLIP_DEVICE", os.environ.get("UMA_DEVICE", "cpu"))
 MODELS = {
-    "uma-s-1p2": {
+    "uma-s-1p1": {
         "backend": "fairchem",
-        "path": os.environ.get("UMA_CHECKPOINT", str(ROOT / "data" / "uma-s-1p2.pt")),
+        "path": os.environ.get("UMA_CHECKPOINT", str(ROOT / "data" / "uma-s-1p1.pt")),
         "task": "oc20",
         "d3": "torch_dftd",
         "d3_xc": "rpbe",
@@ -91,7 +91,7 @@ MODELS = {
     },
 }
 
-DEFAULT_MODEL = os.environ.get("MLIP_MODEL", "uma-s-1p2")
+DEFAULT_MODEL = os.environ.get("MLIP_MODEL", "uma-s-1p1")
 
 # --- relaxation and NEB ----------------------------------------------
 

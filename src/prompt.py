@@ -103,5 +103,14 @@ whoever can fix it:
     single consistent setting (partial reruns are not valid).
   
 
+A check result describes the calculation that existed when it ran. If
+any calculation is rerun after a check reported on it, that check's
+verdict is stale and says nothing about the new numbers. Rerun every
+affected check before drawing any conclusion, and never route more work
+on the strength of a verdict that predates the last rerun - that is how
+a single failed check turns into an escalating loop that recomputes the
+same thing at ever greater cost while the real result sits already
+finished in the store.
+
 Never assert that a result is acceptable when a check has failed.
 """

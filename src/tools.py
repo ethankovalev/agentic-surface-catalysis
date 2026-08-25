@@ -521,6 +521,8 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     unstable near convergence, this is why FIRE, not BFGS.
 
     n_images: intermediate images. The band has n_images + 2 in total.
+              Capped at 24 - GPU memory scales linearly with this and a
+              24 GB card runs out beyond that.
               Raise this if the energy profile shows a sharp spike
               between two neighbouring images.
     with_d3: match whatever the endpoint relaxations used.
@@ -533,6 +535,18 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
             return f"FAILED: no {name}.traj. Relax both endpoints first."
 
     model_key = model_key or config.DEFAULT_MODEL
+
+    # Each image carries its own calculator, so GPU memory scales linearly
+    # with n_images. At 32 images a 24 GB card is already exhausted. Cap it
+    # rather than let the agent escalate into an out-of-memory crash.
+    MAX_IMAGES = 24
+    requested_images = n_images
+    if n_images > MAX_IMAGES:
+        n_images = MAX_IMAGES
+
+    import torch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     store.put("model_key", model_key)
 
     start = read(_path("initial.traj"))
@@ -581,9 +595,12 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     store.put("barrier_eV", float(barrier))
 
     status = "converged" if converged else "DID NOT CONVERGE"
+    capped = (f" Requested {requested_images} images but capped at "
+              f"{MAX_IMAGES} - asking for more will not change this."
+              if requested_images > MAX_IMAGES else "")
     return (f"NEB {status}. Barrier {barrier:.3f} eV, reaction energy "
             f"{reaction_energy:.3f} eV, peak at image {peak} of "
-            f"{len(images) - 1}.")
+            f"{len(images) - 1}.{capped}")
 
 
 @tool
