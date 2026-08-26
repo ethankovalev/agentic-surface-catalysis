@@ -101,11 +101,21 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
     """Run the agent on a single reaction, blind, then score it."""
     store.reset(reaction_id)
 
+    if spec.get("site_type") == "step":
+        site_instruction = (
+            " This reaction occurs at a STEP SITE. Use build_stepped_slab "
+            "(not build_slab) and place the molecule with site='step'. "
+            "A flat terrace slab gives the wrong surface for this reaction."
+        )
+    else:
+        site_instruction = " This reaction occurs on a flat terrace surface."
+
     task = (
         f"Compute the dissociation barrier for {spec['molecule']} on "
-        f"{spec['metal']}({spec['facet']}). Build the slab and both "
-        f"endpoints, relax them, run the nudged elastic band, and "
-        f"validate the result before reporting."
+        f"{spec['metal']}({spec['facet']})."
+        f"{site_instruction}"
+        f" Build the slab and both endpoints, relax them, run the "
+        f"nudged elastic band, and validate the result before reporting."
     )
 
     computed, error_note = None, None
