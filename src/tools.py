@@ -577,10 +577,18 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     opt2 = FIRE(neb, trajectory=_path("neb.traj"), logfile="-")
     converged = opt2.run(fmax=fmax, steps=max_steps)
 
-    barrier, reaction_energy = NEBTools(images).get_barrier()
+    # get_barrier() defaults to fit=True, which returns the peak of a spline
+    # fitted through the images rather than any computed image. On an
+    # under-resolved band that spline overshoots: for N2_Ru0001_step it
+    # reported 1.618 eV when the highest actual image was 1.323 eV. Use
+    # fit=False so the barrier is always a real computed energy. The band
+    # being coarse is a separate problem, flagged by the path_resolved
+    # check; this stops it being papered over with an interpolated number.
+    _, reaction_energy = NEBTools(images).get_barrier(fit=False)
     energies = [img.get_potential_energy() for img in images]
     uphill = [e - energies[0] for e in energies]
     peak = int(np.argmax(uphill))
+    barrier = float(uphill[peak])
 
     store.put("neb", {
         "barrier_eV": float(barrier),
