@@ -512,7 +512,7 @@ def relax_structure(structure: str, model_key: str = None, with_d3: bool = True,
 
 @tool
 def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
-            fmax: float = 0.10, max_steps: int = 400) -> str:
+            max_steps: int = 400) -> str:
     """Find the transition state between the relaxed endpoints.
 
     Runs a two-pass climbing-image NEB with the FIRE optimiser. NEB
@@ -575,7 +575,15 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     # function that no longer exists.
     neb.climb = True
     opt2 = FIRE(neb, trajectory=_path("neb.traj"), logfile="-")
-    converged = opt2.run(fmax=fmax, steps=max_steps)
+
+    # Pinned, deliberately not a tool argument. Every reaction in the
+    # benchmark must converge to the same tolerance or the barriers are not
+    # comparable across the grid. This was previously agent-settable with a
+    # default of 0.10, so a run could use any tolerance without that being
+    # obvious in the output. Recorded in the store below so every result
+    # carries the tolerance it was computed at.
+    NEB_FMAX = 0.02
+    converged = opt2.run(fmax=NEB_FMAX, steps=max_steps)
 
     # get_barrier() defaults to fit=True, which returns the peak of a spline
     # fitted through the images rather than any computed image. On an
@@ -598,6 +606,7 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
                                            # dispersion consistency check
         "peak_image": peak,
         "n_images": len(images),
+        "fmax_target": NEB_FMAX,
         "profile_eV": [float(u) for u in uphill],
     })
     store.put("barrier_eV", float(barrier))

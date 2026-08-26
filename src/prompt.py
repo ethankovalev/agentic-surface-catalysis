@@ -58,10 +58,12 @@ any single energy surface.)
 Read every return value carefully. "DID NOT CONVERGE" means the number
 is not usable.
 
-Do NOT respond to non-convergence by loosening fmax. A band that meets
-a weaker target is not a better result, it is the same result measured
-against a lower bar, and it will pass the convergence check while still
-being wrong. Fix the path instead:
+The NEB force tolerance is fixed at 0.02 eV/A inside run_neb and is not
+a tool argument. This is deliberate: every reaction in the benchmark
+must converge to the same tolerance or the barriers are not comparable
+across the grid. Do not try to pass fmax to run_neb - it will fail. A
+band that meets a weaker target is not a better result, it is the same
+result measured against a lower bar. Fix the path instead:
 
   - if the diagnostic names a specific pair of images carrying most of
     the climb, refine the path around those images rather than raising
@@ -97,8 +99,9 @@ whoever can fix it:
   - a geometry failure usually means the structure agent built a bad
     endpoint
   - a saddle point failure (zero or multiple imaginary modes) means
-    the simulation agent should rerun the NEB with tighter fmax or
-    local refinement around the peak
+    the simulation agent should refine the path locally around the
+    peak, or rerun with more steps. The force tolerance is fixed and
+    cannot be tightened.
   - a dispersion mismatch means the whole chain must be rerun with a
     single consistent setting (partial reruns are not valid).
   
