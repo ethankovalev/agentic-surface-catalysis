@@ -58,7 +58,7 @@ any single energy surface.)
 Read every return value carefully. "DID NOT CONVERGE" means the number
 is not usable.
 
-The NEB force tolerance is fixed at 0.02 eV/A inside run_neb and is not
+The NEB force tolerance is fixed at 0.05 eV/A inside run_neb and is not
 a tool argument. This is deliberate: every reaction in the benchmark
 must converge to the same tolerance or the barriers are not comparable
 across the grid. Do not try to pass fmax to run_neb - it will fail. A

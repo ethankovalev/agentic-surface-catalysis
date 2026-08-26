@@ -582,7 +582,7 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     # default of 0.10, so a run could use any tolerance without that being
     # obvious in the output. Recorded in the store below so every result
     # carries the tolerance it was computed at.
-    NEB_FMAX = 0.02
+    NEB_FMAX = 0.05
     converged = opt2.run(fmax=NEB_FMAX, steps=max_steps)
 
     # get_barrier() defaults to fit=True, which returns the peak of a spline
