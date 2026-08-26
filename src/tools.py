@@ -661,7 +661,11 @@ def compute_gas_referenced_barrier() -> str:
         return f"FAILED: missing {missing}. Relax the gas reference first."
 
     well_depth = gasref["energy_eV"] - initial["energy_eV"]
-    barrier_gas = neb["barrier_eV"] + well_depth
+    # Subtract, not add. well_depth > 0 means the physisorbed minimum sits
+    # BELOW the free molecule, so a trajectory starting from gas is already
+    # part-way up the hill: the gas-referenced barrier must be SMALLER than
+    # the barrier measured from the physisorbed state, never larger.
+    barrier_gas = neb["barrier_eV"] - well_depth
 
     store.put("well_depth_eV", float(well_depth))
     store.put("barrier_gas_eV", float(barrier_gas))
