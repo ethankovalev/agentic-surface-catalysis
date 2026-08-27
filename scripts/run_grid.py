@@ -62,6 +62,17 @@ def main():
                   f"{'SKIP (done)' if done else 'would run'}")
         return
 
+    # Initialise torch.det's lazy LAPACK backend on the MAIN thread, before
+    # any agent work starts. LangGraph runs tools in a thread pool and this
+    # lazy init is not thread-safe - UMA calls torch.det on the cell matrix
+    # during forward, which raises "lazy wrapper should be called at most
+    # once" if it first happens inside a worker thread. invoke.py does the
+    # same thing; this script is a second entry point and needs it too.
+    import torch
+    if torch.cuda.is_available():
+        torch.det(torch.eye(3, device="cuda"))
+    torch.det(torch.eye(3))
+
     graph = create_graph()
     completed = skipped = failed = 0
 
