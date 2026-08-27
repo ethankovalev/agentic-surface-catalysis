@@ -25,6 +25,7 @@ set across models would make the dispersion comparison meaningless,
 which is why d3_xc is a per-model field rather than a global constant.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -121,6 +122,14 @@ def new_calculator(model_key: str = None, with_d3: bool = False):
     model_key indexes config.MODELS; None uses config.DEFAULT_MODEL, so
     existing single-model callers keep working unchanged.
     """
+    # FORCE_D3 overrides whatever the agent asked for. The benchmark grid
+    # needs dispersion held fixed across every run in a sweep, but with_d3
+    # is chosen by the agent per tool call, so a sweep would otherwise mix
+    # settings. Unset (the normal case) changes nothing.
+    _forced = os.environ.get("FORCE_D3")
+    if _forced is not None:
+        with_d3 = _forced.lower() in ("1", "true", "on", "yes")
+
     spec = model_spec(model_key)
     backend = spec["backend"]
 
