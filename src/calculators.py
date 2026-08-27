@@ -130,6 +130,14 @@ def new_calculator(model_key: str = None, with_d3: bool = False):
     if _forced is not None:
         with_d3 = _forced.lower() in ("1", "true", "on", "yes")
 
+    # FORCE_MODEL: same rationale as FORCE_D3. config.DEFAULT_MODEL is read
+    # once at import, so a sweep cannot switch models by setting MLIP_MODEL
+    # mid-process, and model_key is chosen by the agent per call. Read fresh
+    # on every construction so the grid can pin it per run.
+    _forced_model = os.environ.get("FORCE_MODEL")
+    if _forced_model:
+        model_key = _forced_model
+
     spec = model_spec(model_key)
     backend = spec["backend"]
 
