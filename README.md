@@ -1,7 +1,7 @@
 # Agentic surface catalysis: a cross-model barrier benchmark
 
 An agent that autonomously builds, relaxes, and computes dissociation barriers on
-transition metal surfaces — then benchmarks **every public foundational MLIP**
+transition metal surfaces, then benchmarks **every public foundational MLIP**
 against the same ten experimentally referenced barriers, with dispersion as an
 explicit variable rather than a buried default.
 
@@ -13,8 +13,8 @@ The agent is the harness. The result is the comparison.
 
 Universal machine-learning interatomic potentials are now good enough that
 people use them to screen catalysts. Reaction rates depend on barriers
-exponentially — rate ∝ exp(−E<sub>a</sub>/k<sub>B</sub>T) — so at 500 K a
-0.2 eV barrier error is roughly a 100× rate error. Chemical accuracy is
+exponentially: rate ∝ exp(−E<sub>a</sub>/k<sub>B</sub>T). At 500 K a 0.2 eV
+barrier error is roughly a 100× rate error. Chemical accuracy is
 1 kcal/mol ≈ 0.043 eV.
 
 Most published MLIP evaluation reports energies and forces on equilibrium
@@ -40,12 +40,12 @@ Two properties make it the right target.
 **The references are experimental, not computational.** Agreement means
 agreement with reality, not with whichever DFT setup generated a model's
 training data. Almost every MLIP benchmark in circulation compares against DFT,
-which measures how well a model reproduces its teacher — a different and easier
+which measures how well a model reproduces its teacher, a different and easier
 question.
 
 **Dispersion is the discriminating axis.** In the original study the
 dispersion-corrected BEEF-vdW reached 0.14 eV mean error, beating both a
-meta-GGA and a screened hybrid — the reverse of the typical gas-phase pattern.
+meta-GGA and a screened hybrid, the reverse of the typical gas-phase pattern.
 Several of the models tested here are trained on RPBE or PBE data with no
 dispersion term at all. That is a sharp, testable hypothesis, not a vague gap.
 
@@ -58,37 +58,43 @@ that models disagree.
 
 | Key | Backend | Training domain | Surfaces in domain? | Access |
 |---|---|---|---|---|
-| `uma-s-1p2` | fairchem | OC20 + OMat24 + OMol25 + ODAC23 + OMC25 | **yes** (`oc20` task) | gated |
-| `mace-mh-1` | mace | OMat24 pretrain, multi-head | **yes** (`oc20_usemppbe` head) | open, ASL — academic only |
-| `mace-mpa-0` | mace | Materials Project + Alexandria | no — bulk crystals | open |
-| `orb-v3-cons-inf-omat` | orb | OMat24 | no — bulk crystals | open |
-| `esen-sm-cons-omol` | fairchem | OMol25 (isolated molecules, ωB97M-V) | no — molecular | gated |
+| `uma-s-1p1` | fairchem | OC20 + OMat24 + OMol25 + ODAC23 + OMC25 | **yes** (`oc20` task) | gated |
+| `mace-mh-1` | mace | OMat24 pretrain, multi-head | **yes** (`oc20_usemppbe` head) | open, ASL academic only |
+| `mace-mpa-0` | mace | Materials Project + Alexandria | no, bulk crystals | open |
+| `orb-v3-cons-inf-omat` | orb | OMat24 | no, bulk crystals | open |
+| `esen-sm-cons-omol` | fairchem | OMol25 (isolated molecules, ωB97M-V) | no, molecular | gated |
 
 `training_domain` and `in_domain_for_surfaces` are recorded in `config.MODELS`
 and carried into every results table. They are not decoration. OC20 is
 adsorbates on slabs; OMat24 is bulk inorganic crystals; OMol25 is isolated
 molecules at a molecular level of theory. Running a molecular model on a
-periodic slab is out of domain **by construction** — including those models is
+periodic slab is out of domain **by construction**. Including those models is
 the point, but a table that doesn't say so reads as a fair fight when it isn't.
 
 The interesting result is not a leaderboard. It is *which training domain
 transfers to surface barriers, and how much the mismatch costs.*
 
+**On UMA-S-1.2.** The 1.2 checkpoint is incompatible with every installable
+`fairchem-core` version tested (2.14.0, 2.13.0, 2.5.0, 1.10.0): the saved
+`eSCNMDBackbone` config carries parameters the current library does not accept.
+This benchmark therefore uses UMA-S-1.1, which works with `fairchem-core`
+2.14.0. This is a documented limitation, not a preference.
+
 ### Dispersion is per model, not global
 
-D3 damping parameters are fitted to a specific functional — RPBE for OC20-based
+D3 damping parameters are fitted to a specific functional, RPBE for OC20-based
 models, PBE for OMat24-based ones. `d3_xc` is therefore a per-model field.
 Using one setting across models would silently invalidate every dispersion
 comparison in the benchmark.
 
 Three mechanisms are handled separately:
 
-- **`torch_dftd`** — D3 added as a second additive calculator (UMA, Orb), so it
+- **`torch_dftd`**: D3 added as a second additive calculator (UMA, Orb), so it
   contributes forces *during* relaxation rather than as a single-point
   correction afterwards. The geometry shift under dispersion is most of the
   effect.
-- **`builtin`** — MACE applies dispersion internally via `dispersion=True`.
-- **`none`** — ωB97M-V already includes dispersion; adding D3 would double-count
+- **`builtin`**: MACE applies dispersion internally via `dispersion=True`.
+- **`none`**: ωB97M-V already includes dispersion; adding D3 would double-count
   it, so `new_calculator` raises rather than silently returning the bare model.
 
 ---
@@ -96,17 +102,20 @@ Three mechanisms are handled separately:
 ## Setup
 
 Two environments are required. **UMA and MACE have conflicting `e3nn` version
-requirements and cannot coexist.** Orb lives with MACE.
+requirements and cannot coexist.** `mace-torch` pins `e3nn==0.4.4`;
+`fairchem-core` requires `e3nn>=0.5`. Installing MACE into a working UMA
+environment breaks UMA outright, with an import failure deep inside the
+checkpoint loader rather than at install time. Orb lives with MACE.
 
 ```bash
 # environment 1: UMA
-python3.13 -m venv .venv
+python3.10 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
 # environment 2: MACE + Orb
-python3.13 -m venv .venv-mace
+python3.10 -m venv .venv-mace
 source .venv-mace/bin/activate
 pip install --upgrade pip
 export CMAKE_POLICY_VERSION_MINIMUM=3.5        # see Troubleshooting
@@ -115,7 +124,7 @@ pip install ase numpy torch-dftd mace-torch orb-models
 
 ```bash
 export ANTHROPIC_API_KEY=...
-export UMA_CHECKPOINT=/path/to/uma-s-1p2.pt    # or place it in data/
+export UMA_CHECKPOINT=/path/to/uma-s-1p1.pt    # or place it in data/
 export MLIP_DEVICE=cuda                        # if you have a GPU
 ```
 
@@ -136,7 +145,7 @@ ls data/mace-mh-1 data/mace-mpa-0       # confirm filenames, update config.MODEL
 
 Orb resolves its own weights by tag. `config.py` sets `HF_HOME` to
 `data/hf_cache/` so every download lands inside the project and later runs are
-network-free — which matters, because a benchmark whose weights silently
+network-free. This matters, because a benchmark whose weights silently
 redownload or update between runs is not reproducible.
 
 ### Verify before computing anything
@@ -163,28 +172,52 @@ meaningless.
 
 ## Running
 
+A single reaction, verbose. Start here:
+
 ```bash
-python invoke.py --single H2_Cu111     # one reaction, verbose — start here
-python invoke.py --all                 # the full SBH10 set
-python invoke.py --task "..."          # ad-hoc task, not scored
-MLIP_MODEL=mace-mh-1 python invoke.py --all    # a different model
+python invoke.py --single H2_Cu111
 ```
 
-Start with `--single`. If the agent gets H₂ on Cu(111) badly wrong, that is
-worth knowing on day one, not after ten runs.
+A full sweep, resumable:
+
+```bash
+python scripts/run_grid.py --models uma-s-1p1 --dry-run   # list planned runs
+python scripts/run_grid.py --models uma-s-1p1 --d3 on     # run them
+```
+
+`run_grid.py` writes one JSON per completed run and skips anything already
+present, so it can be killed and restarted without losing work. Failures are
+logged to a per-run `.error` file and do not halt the batch. Results are
+written to `/workspace/agentic-surface-catalysis/results/grid` by default,
+outside the repository, so that losing the machine does not lose the results.
+Override with `GRID_RESULTS_DIR`.
 
 Because the two environments are separate, a full cross-model grid is run once
 per environment and the results merged afterwards.
+
+### Settings the agent cannot vary
+
+Three quantities are pinned outside the agent's control, because a sweep in
+which each run silently chose its own is not a comparable dataset.
+
+- **NEB force tolerance is fixed at 0.05 eV/Å** inside `run_neb` and is not a
+  tool argument. It was previously agent-settable with a default of 0.10, so
+  runs could and did converge to different bars while all reporting success.
+- **`FORCE_MODEL`** overrides the model key the agent passes, so the grid can
+  pin one model per run. `config.DEFAULT_MODEL` is read once at import, so
+  setting `MLIP_MODEL` mid-process does nothing.
+- **`FORCE_D3`** overrides the dispersion flag the agent passes, for the same
+  reason. Unset, both behave exactly as before.
 
 ## Architecture
 
 A supervisor picks which worker acts next; workers report back to it.
 
-- **Structure_Agent** — builds the slab, places the adsorbate, constructs the
+- **Structure_Agent**: builds the slab, places the adsorbate, constructs the
   dissociated endpoint
-- **Simulation_Agent** — relaxes the endpoints and the gas-phase reference, runs
+- **Simulation_Agent**: relaxes the endpoints and the gas-phase reference, runs
   the climbing-image NEB, converts the barrier to a gas-phase reference
-- **Validation_Agent** — runs the physical sanity checks
+- **Validation_Agent**: runs the physical sanity checks
 
 **One deliberate departure from the standard supervisor pattern: the supervisor
 cannot end the run.** `exit_gate` in `src/graph.py` reads the validation record
@@ -202,10 +235,13 @@ None of them compares against the reference value.
 | `convergence` | energies from non-converged optimisations |
 | `noise_floor` | results below the model's own resolvable floor |
 | `dispersion` | adsorbate drifting away because the model has no vdW term |
+| `dispersion_consistent` | a barrier assembled from a mix of D3-on and D3-off steps, which is not a barrier on any single energy surface |
+| `gas_reference` | a missing gas-phase reference, or a negative well depth meaning the physisorbed state is unbound |
+| `fragments` | the wrong bond breaking, or the molecule not dissociating at all |
 | `geometry` | atoms driven into the surface; barrier peak at an endpoint |
 | `reaction_consistency` | endothermic reaction with a barrier below its reaction energy; chemically impossible magnitudes |
 | `endpoints_distinct` | a "barrier" between two states that turned out to be the same minimum |
-| `path_resolved` | a band too coarse to sample the transition state — one image-to-image step carrying most of the climb |
+| `path_resolved` | a band too coarse to sample the transition state, one image-to-image step carrying most of the climb |
 
 `endpoints_distinct` is what makes a zero barrier interpretable. Two of the ten
 reactions (H₂ on Pt(111) and Ru(0001)) are genuinely non-activated, so a
@@ -219,6 +255,12 @@ The agent never sees the reference barrier. No tool reaches `src/benchmark.py`,
 and none of the prompts mentions it. Comparison happens in the runner, after the
 graph has returned. Any other arrangement measures how well the agent can
 curve-fit, not how well it can calculate.
+
+Site type is the exception, and deliberately so. Whether a reaction is measured
+at a terrace or a step is part of the problem specification, not the answer, so
+`run_one` passes it into the task prompt. It previously did not, which meant
+`N2_Ru0001_step` and `N2_Ru0001_terrace` sent byte-identical instructions while
+being scored against references 1.44 eV apart.
 
 ### Gas-phase referencing
 
@@ -234,42 +276,56 @@ difference:
 
 ```
 well_depth  = E_gasref − E_initial
-barrier_gas = barrier_neb + well_depth
+barrier_gas = barrier_neb - well_depth
 ```
+
+The sign matters and is easy to get backwards. A positive well depth means the
+physisorbed minimum sits *below* the free molecule, so a trajectory starting
+from gas is already part-way up the hill and the gas-referenced barrier must be
+smaller than the barrier measured from the physisorbed state.
 
 `compute_gas_referenced_barrier` performs this conversion and reports the well
 depth as a diagnostic. For H₂ on Cu the well is shallow and the two conventions
-nearly agree; for CH₄ on Ni or Ru, where dispersion binding is stronger, the
-correction is expected to matter more.
+nearly agree; for CH₄ on Ni or Ru, and for N₂ at a Ru step, the correction is
+large.
 
 ## Current status
 
-**No cross-model results yet.** The harness runs, the model registry is
-verified across all five backends, but the grid has not been executed. Nothing
-in this repository should be cited as a benchmark result today.
+**First UMA results in hand; cross-model results pending.** The harness runs,
+the model registry is verified across all five backends, and a blind
+UMA-S-1.1 sweep of SBH10 is underway. MACE and Orb passes have not been run.
 
 What is actually true right now:
 
-- **The registry works.** All three open models (`mace-mh-1`, `mace-mpa-0`,
-  `orb-v3-cons-inf-omat`) construct and evaluate, with and without dispersion,
-  and D3 deltas agree to 0.01 eV across models — the correct behaviour for an
-  additive geometric term.
-- **One reaction has been run end to end, and it does not count yet.**
-  H₂/Cu(111) gave a barrier of **0.672 eV** against an SBH10 reference of
-  0.63 eV — but that run predates the gas-phase referencing, the
-  `path_resolved` check, and the entire multi-model refactor, and its energy
-  profile jumped 0.525 eV in a single image-to-image step, which is 78% of the
-  barrier. It is being rerun.
-- **A silent head-selection bug was found and fixed.** `mace-mh-1` was being
-  requested with head `"oc20"`, which does not exist; MACE fell back to
-  `omat_pbe` — a *bulk crystal* head — with only a warning. Every MACE surface
-  number would have been wrong in a way that looked entirely normal. The
-  correct head is `oc20_usemppbe`. Treat this as the representative failure
-  mode of this whole exercise: the errors that matter do not raise exceptions.
-- **`esen-sm-cons-omol` is not yet runnable** — the OMol25 gate is separate
+- **UMA-S-1.1, D3 on, all ten reactions.** _[table pending: computed,
+  reference, error, validated]_ Every error so far is negative. The two
+  informative cases, Cu(111) and Cu(100), are 0.14 to 0.20 eV low. **The noise
+  floor is still a placeholder 0.3 eV and has not been measured**, so no claim
+  is made about whether deviations of this size are significant.
+- **Four silent bugs found and fixed.** In every case the pipeline produced a
+  plausible-looking number and raised no exception:
+  - `site_type` never reached the agent, so step-site and terrace reactions
+    sent byte-identical prompts while being scored against references 1.44 eV
+    apart.
+  - Gas-phase referencing *added* the physisorption well depth instead of
+    subtracting it, inflating every bound-reaction barrier by twice the well
+    depth. This is why an earlier H₂/Cu(111) figure of 0.672 eV appeared here;
+    the corrected value is ~0.486 eV.
+  - `NEBTools.get_barrier()` defaults to a spline fit, which overshot the
+    highest computed image by 0.3 eV on under-resolved bands. Now `fit=False`,
+    so the reported barrier is always a real computed energy.
+  - `mace-mh-1` was requested with head `"oc20"`, which does not exist; MACE
+    fell back to `omat_pbe`, a *bulk crystal* head, with only a warning.
+    Every MACE surface number would have been wrong in a way that looked
+    entirely normal. The correct head is `oc20_usemppbe`.
+
+  Treat these as the representative failure mode of this whole exercise: the
+  errors that matter do not raise exceptions.
+- **`esen-sm-cons-omol` is not yet runnable.** The OMol25 gate is separate
   from the UMA gate and access has not been granted.
 
-Treat all of the above as evidence the pipeline works, not as results.
+Results here are single-model and the noise floor is unmeasured. Treat them as
+a first pass, not a benchmark.
 
 ## Project layout
 
@@ -278,13 +334,15 @@ agentic-surface-catalysis/
 ├── .gitignore
 ├── README.md
 ├── config.py                  # model registry, thresholds, paths
-├── invoke.py                  # entry point
+├── invoke.py                  # entry point, single reaction
 ├── requirements.txt
 ├── data/                      # checkpoints and HF cache (gitignored)
+├── scripts/
+│   └── run_grid.py            # resumable sweep over reactions x models x D3
 └── src/
     ├── __init__.py
     ├── agent.py               # builds the three agents
-    ├── benchmark.py           # SBH10 reference barriers — never reachable by a tool
+    ├── benchmark.py           # SBH10 reference barriers, never reachable by a tool
     ├── calculators.py         # multi-backend calculator registry + dispersion
     ├── graph.py               # supervisor routing and the exit gate
     ├── prompt.py              # the three agent prompts
@@ -294,17 +352,23 @@ agentic-surface-catalysis/
 
 ## What is not finished
 
-- **Two of the ten reactions need stepped surfaces.** `N2_Ru0001_step` and
-  `CH4_Ni111_step` are measured at step sites, where under-coordinated edge
-  atoms lower the barrier substantially — N₂ on Ru(0001) drops from 1.84 eV on
-  the terrace to 0.40 eV at a step. `build_slab` only produces flat terraces,
-  so these two cannot currently be computed correctly. No validation check
-  will catch this: both step values sit comfortably inside a plausible range.
-  That 1.44 eV spread is also the single most discriminating pair in the set,
-  so this is the most valuable missing piece, not the least.
+- **The step reactions do not resolve their transition states.** Stepped slabs
+  now build correctly: `build_stepped_slab` carves a step edge, measures the
+  reference terrace coordination first (a fixed threshold reports "no step" on
+  a slab that has one, because the neighbour cutoff scales with covalent
+  radius), and records the under-coordinated edge atoms for
+  `place_adsorbate(site="step")`. `N2_Ru0001_step` runs end to end and
+  dissociates at the edge. What it does not do is pass `path_resolved`: at
+  default image counts a single image-to-image step carries up to 89% of the
+  climb, so the reported barrier is a lower bound on a transition state that
+  was never actually sampled. This is the most valuable unresolved item, since
+  the 1.44 eV terrace-to-step spread is the single most discriminating pair in
+  the set.
 - **Noise floors are placeholders.** `noise_floor_eV: 0.3` is a guess in every
   registry entry. The real per-model figure requires repeat runs with
-  perturbed initial conditions, and is itself one of the intended results.
+  perturbed initial conditions, and is itself one of the intended results. It
+  currently exceeds the errors being interpreted, which means no deviation
+  measured so far can be called significant.
 - **No site or orientation sampling.** One configuration per reaction, so the
   reported barrier is not a minimum over configuration space. Fragments can
   settle at atop sites when a hollow site is more stable.
@@ -326,7 +390,7 @@ agentic-surface-catalysis/
 
 - OC20/RPBE has no dispersion term. This is why D3 is included in the
   relaxation loop by default (`with_d3=True`), not applied afterward as a
-  single-point correction — the geometry shift under dispersion is most of
+  single-point correction: the geometry shift under dispersion is most of
   the effect.
 - D3 is known to overbind on some metal surfaces. Agreement with experiment
   should be read as suggestive, not confirmatory, without a second
@@ -342,39 +406,47 @@ agentic-surface-catalysis/
 
 ## Troubleshooting
 
-**`dm-tree` fails to build: `CMake must be installed`** — install cmake
+**`dm-tree` fails to build: `CMake must be installed`.** Install cmake
 (`brew install cmake`). If it then fails with *"Compatibility with CMake < 3.5
 has been removed"*, set `export CMAKE_POLICY_VERSION_MINIMUM=3.5` before
 installing.
 
-**`AttributeError: module 'config' has no attribute 'DEVICE'`** — `DEVICE`
+**`RuntimeError: lazy wrapper should be called at most once`.** `torch.det`
+initialises its LAPACK backend lazily and that initialisation is not
+thread-safe. LangGraph runs tools in a thread pool, and UMA calls `torch.det`
+on the cell matrix during the forward pass, so the second calculator
+constructed inside an agent run raises. Both entry points warm `torch.det` on
+the main thread before building the graph. Any new entry point must do the
+same.
+
+**`AttributeError: module 'config' has no attribute 'DEVICE'`.** `DEVICE`
 must be defined in `config.py` before `MODELS`.
 
-**`ModuleNotFoundError: orb_models.forcefield.calculator`** — newer
+**`ModuleNotFoundError: orb_models.forcefield.calculator`.** Newer
 `orb-models` moved this to `orb_models.forcefield.inference.calculator`.
 `_build_orb` tries both.
 
 **`NotImplementedError: We do not support periodicity along a subset of
-axes`** — Orb requires full 3D periodicity. `ase.build.fcc111(...,
-vacuum=...)` returns `pbc=[True, True, False]`. `build_slab` sets
-`slab.pbc = True`; any ad-hoc script must do the same, or models are being
-compared under different boundary conditions.
+axes`.** Orb requires full 3D periodicity. `ase.build.fcc111(..., vacuum=...)`
+returns `pbc=[True, True, False]`. `build_slab` sets `slab.pbc = True`; any
+ad-hoc script must do the same, or models are being compared under different
+boundary conditions.
 
 **`WARNING: Head <name> not found in available heads [...], defaulting to
-the last head`** — do not ignore this. MACE silently falls back to a
+the last head`.** Do not ignore this. MACE silently falls back to a
 different head. Check the printed list and set the exact name in
 `config.MODELS`.
 
 **`create_react_agent() got unexpected keyword arguments:
-{'state_modifier': ...}`** — LangGraph renamed this argument to `prompt`.
+{'state_modifier': ...}`.** LangGraph renamed this argument to `prompt`.
 Change all three occurrences in `src/graph.py`.
 
-**`KeyError: 'messages'`** — some LangGraph versions yield node-keyed chunks
+**`KeyError: 'messages'`.** Some LangGraph versions yield node-keyed chunks
 from `.stream()` rather than full state. `run_worker` in `src/graph.py`
 passes `stream_mode="values"` and guards on the key being present; if you see
 this, check both are in place.
 
-**`zsh: bad assignment`** when setting the API key — shell variable names
+**`zsh: bad assignment`** when setting the API key. Shell variable names
 cannot contain hyphens. It is `ANTHROPIC_API_KEY` with underscores, and no
 spaces around the `=`.
 
