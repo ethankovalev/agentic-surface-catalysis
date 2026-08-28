@@ -21,7 +21,12 @@ import config
 from src.benchmark import SBH10, run_one
 from src.graph import create_graph
 
-RESULTS_DIR = Path(__file__).parent.parent / "results" / "grid"
+# Write to the network volume, not the repo. The repo lives on the pod's
+# local disk, which is wiped when the pod goes away - a full sweep of
+# results was lost that way. /workspace persists across pods.
+RESULTS_DIR = Path(os.environ.get(
+    "GRID_RESULTS_DIR",
+    "/workspace/agentic-surface-catalysis/results/grid"))
 
 
 def result_path(reaction_id, model_key, d3_label):
