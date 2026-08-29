@@ -11,6 +11,7 @@ Usage:
 import argparse
 import json
 import os
+import signal
 import sys
 import traceback
 from pathlib import Path
@@ -27,6 +28,22 @@ from src.graph import create_graph
 RESULTS_DIR = Path(os.environ.get(
     "GRID_RESULTS_DIR",
     "/workspace/agentic-surface-catalysis/results/grid"))
+
+
+# A reaction that fails path_resolved makes the agent rerun the NEB with more
+# images, and each rerun is a full NEB from scratch. There is no cap on that
+# loop, so one pathological reaction can block every reaction behind it for
+# hours. Abandon it after a fixed budget, log it, and move on: a logged
+# failure is a data point, a fourth NEB is not.
+REACTION_BUDGET_S = int(os.environ.get("REACTION_BUDGET_S", "2700"))
+
+
+class ReactionTimeout(Exception):
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise ReactionTimeout(f"per-reaction budget of {REACTION_BUDGET_S}s exceeded")
 
 
 def result_path(reaction_id, model_key, d3_label):
@@ -96,6 +113,9 @@ def main():
         os.environ["FORCE_MODEL"] = model_key
         os.environ["FORCE_D3"] = d3_label
 
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(REACTION_BUDGET_S)
+
         try:
             result = run_one(graph, reaction_id, spec)
             result["_grid_model_key"] = model_key
@@ -114,6 +134,8 @@ def main():
             print(f"    -> FAILED: {type(exc).__name__}: {exc}", flush=True)
             failed += 1
             continue
+        finally:
+            signal.alarm(0)
 
     print(f"\nDone. completed={completed} skipped={skipped} failed={failed} of {len(plan)}")
 

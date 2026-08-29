@@ -61,7 +61,14 @@ is not usable.
 The NEB force tolerance is fixed at 0.05 eV/A inside run_neb and is not
 a tool argument. This is deliberate: every reaction in the benchmark
 must converge to the same tolerance or the barriers are not comparable
-across the grid. Do not try to pass fmax to run_neb - it will fail. A
+across the grid. Do not try to pass fmax to run_neb - it will fail.
+
+There is a limit on rerunning the NEB. n_images is capped at 24, and run_neb
+says so when it clamps a request. Once you have run at the cap and
+path_resolved still fails, more reruns cannot resolve the path any further:
+report the result with the check failed and stop. Do not rerun a third time
+at the cap. A result recorded as unresolved is useful; an unbounded retry
+loop is not. A
 band that meets a weaker target is not a better result, it is the same
 result measured against a lower bar. Fix the path instead:
 
