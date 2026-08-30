@@ -212,6 +212,70 @@ def build_stepped_slab(metal: str, facet: str = "111", nx: int = 6, ny: int = 3,
             f"{len(bottom)} fixed. Saved to slab.traj.")
 
 
+def _top_layer(atoms, metal_indices, tol=0.5):
+    """Indices of the metal atoms in the topmost surface layer."""
+    zmax = max(atoms.positions[i, 2] for i in metal_indices)
+    return [i for i in metal_indices if atoms.positions[i, 2] > zmax - tol]
+
+
+def _hollow_sites(atoms, metal_indices, n_grid=64):
+    """Lateral positions locally furthest from any top-layer metal atom.
+
+    A hollow is the point on the surface with the greatest clearance from
+    the surrounding metal atoms, so locating hollows as local maxima of the
+    distance field works for fcc(111), fcc(100) and hcp(0001) without the
+    code knowing which facet it is looking at. Checked against 3x3 cells:
+    18 sites on fcc(111) and hcp(0001) (the fcc and hcp hollows), 9 on
+    fcc(100) (the four-fold hollows).
+
+    Returns a list of xy positions. Note this cannot distinguish an fcc
+    hollow from an hcp one; they are both returned and the caller takes
+    whichever is nearest.
+    """
+    top = _top_layer(atoms, metal_indices)
+    cell = np.array(atoms.cell[:2, :2], dtype=float)
+    top_xy = atoms.positions[top][:, :2]
+    inv = np.linalg.inv(cell)
+
+    us = np.linspace(0.0, 1.0, n_grid, endpoint=False)
+    frac = np.array([[u, v] for u in us for v in us])
+    grid_xy = frac @ cell
+    shifts = np.array([[i, j] for i in (-1, 0, 1) for j in (-1, 0, 1)],
+                      dtype=float) @ cell
+    images = (top_xy[:, None, :] + shifts[None, :, :]).reshape(-1, 2)
+    d = np.linalg.norm(grid_xy[:, None, :] - images[None, :, :], axis=2)
+    clearance = d.min(axis=1).reshape(n_grid, n_grid)
+
+    dm = np.linalg.norm(top_xy[:, None, :] - images[None, :, :], axis=2)
+    dm[dm < 1e-6] = np.inf
+    nn = dm.min()
+
+    cmax = clearance.max()
+    peaks = []
+    for i in range(n_grid):
+        for j in range(n_grid):
+            c = clearance[i, j]
+            if c < 0.9 * cmax:
+                continue
+            neigh = [clearance[(i + di) % n_grid, (j + dj) % n_grid]
+                     for di in (-1, 0, 1) for dj in (-1, 0, 1)
+                     if (di, dj) != (0, 0)]
+            if c >= max(neigh) - 1e-9:
+                peaks.append(grid_xy[i * n_grid + j])
+
+    merged = []
+    for xy in peaks:
+        for k, (mxy, n) in enumerate(merged):
+            df = (xy - mxy) @ inv
+            df -= np.round(df)
+            if np.linalg.norm(df @ cell) < 0.3 * nn:
+                merged[k] = ((mxy * n + xy) / (n + 1), n + 1)
+                break
+        else:
+            merged.append((xy, 1))
+    return [xy for xy, _ in merged]
+
+
 def _coordination(slab):
     """Neighbour count for every atom, using covalent-radius cutoffs."""
     cutoffs = natural_cutoffs(slab, mult=1.15)
@@ -394,8 +458,6 @@ def build_dissociated_endpoint(separation: float = None,
     r_metal = covalent_radii[atomic_numbers[atoms[metal[0]].symbol]]
     r_ads = sum(covalent_radii[atoms[i].number] for i in ads) / len(ads)
 
-    if height is None:
-        height = r_metal + r_ads
     if separation is None:
         separation = 2.5 * (r_metal + r_ads)
 
@@ -437,10 +499,39 @@ def build_dissociated_endpoint(separation: float = None,
     atoms.positions[left] -= direction * shift
     atoms.positions[right] += direction * shift
 
+    # Put each fragment over a hollow, not wherever the lateral separation
+    # happened to leave it. Previously only z was set, so a fragment could
+    # land atop a surface atom and relax into that minimum: two N atoms on
+    # Ru(0001) came out 2.07 eV ABOVE the intact molecule, which made the
+    # NEB unconvergeable because the endpoint itself was wrong.
     surface_z = max(atoms.positions[i, 2] for i in metal)
+    sites = _hollow_sites(atoms, metal)
+    used = []
+    heights = []
+
     for group in (left, right):
+        # the largest atom in the fragment is the one that binds, so it is
+        # the anchor and its own radius sets the height. Averaging radii
+        # across the whole adsorbate put a CH3 carbon at a hydrogen height.
+        anchor = max(group, key=lambda k: covalent_radii[atoms[k].number])
+        r_group = covalent_radii[atoms[anchor].number]
+        h = height if height is not None else r_metal + r_group
+        heights.append(h)
+
+        if sites:
+            free = [s for n, s in enumerate(sites) if n not in used]
+            if free:
+                anchor_xy = atoms.positions[anchor, :2]
+                best_site = min(free,
+                                key=lambda s: np.linalg.norm(s - anchor_xy))
+                used.append(sites.index(best_site))
+                atoms.positions[group, 0] += best_site[0] - anchor_xy[0]
+                atoms.positions[group, 1] += best_site[1] - anchor_xy[1]
+
         lowest = min(atoms.positions[i, 2] for i in group)
-        atoms.positions[group, 2] += (surface_z + height) - lowest
+        atoms.positions[group, 2] += (surface_z + h) - lowest
+
+    height = heights
 
     write(_path("final.traj"), atoms)
 
@@ -448,14 +539,16 @@ def build_dissociated_endpoint(separation: float = None,
     left_symbols = sorted(atoms[i].symbol for i in left)
     right_symbols = sorted(atoms[i].symbol for i in right)
 
-    store.put("final", {"separation": separation, "height": height,
+    store.put("final", {"separation": separation,
+                        "height": [round(h, 3) for h in height],
                         "fragments": [len(left), len(right)],
                         "broken_bond": f"{atoms[a].symbol}-{atoms[b].symbol}",
                         "fragment_symbols": [left_symbols, right_symbols]})
     return (f"Built dissociated endpoint: broke the "
             f"{atoms[a].symbol}-{atoms[b].symbol} bond into fragments of "
             f"{len(left)} and {len(right)} atoms, {separation:.2f} Å apart, "
-            f"{height:.2f} Å above the surface. Saved to final.traj.")
+            f"at {height[0]:.2f} and {height[1]:.2f} Å above the surface, "
+            f"each over a hollow site. Saved to final.traj.")
 
 
 # Simulation tools
