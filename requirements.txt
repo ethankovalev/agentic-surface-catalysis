@@ -7,3 +7,4 @@ langgraph
 langchain-core
 langchain-anthropic
 pydantic
+sella

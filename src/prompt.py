@@ -105,6 +105,13 @@ whoever can fix it:
     more steps or more images
   - a geometry failure usually means the structure agent built a bad
     endpoint
+  - a path_resolved failure means the true peak fell between two images
+    and was never computed. Prefer refine_saddle over rerunning the band:
+    it starts from the highest image and converges onto the saddle itself,
+    then confirms exactly one imaginary mode. On a test case a 3-image band
+    failing at 52 percent gave, after refinement, the same answer as an
+    11-image band, in one step. Reruns with more images cost a whole new
+    band each time and have repeatedly failed to fix this.
   - a saddle point failure (zero or multiple imaginary modes) means
     the simulation agent should refine the path locally around the
     peak, or rerun with more steps. The force tolerance is fixed and
