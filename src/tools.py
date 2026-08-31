@@ -276,6 +276,13 @@ def _hollow_sites(atoms, metal_indices, n_grid=64):
     return [xy for xy, _ in merged]
 
 
+def _mic_xy(p, q, cell2, inv2):
+    """In-plane distance between two points under periodic boundaries."""
+    df = (np.asarray(p, dtype=float) - np.asarray(q, dtype=float)) @ inv2
+    df -= np.round(df)
+    return float(np.linalg.norm(df @ cell2))
+
+
 def _coordination(slab):
     """Neighbour count for every atom, using covalent-radius cutoffs."""
     cutoffs = natural_cutoffs(slab, mult=1.15)
@@ -526,7 +533,20 @@ def build_dissociated_endpoint(separation: float = None,
         free = [n for n in range(len(sites)) if n not in used]
         if free:
             axy = atoms.positions[anchor, :2].copy()
-            best_n = min(free, key=lambda n: np.linalg.norm(sites[n] - axy))
+            if not used:
+                # first fragment: the hollow nearest where it already sits
+                best_n = min(free, key=lambda n: _mic_xy(sites[n], axy, cell2, inv2))
+            else:
+                # Second fragment: the hollow whose distance from the first
+                # best matches the separation actually requested. Choosing
+                # nearest-to-anchor independently for both fragments collapsed
+                # them onto neighbouring hollows - on Ru(0001) two N atoms
+                # separated to 3.97 A ended up 1.91 A apart after snapping and
+                # recombined into N2 during relaxation, so endpoints_distinct
+                # failed and the barrier was meaningless.
+                first_xy = sites[used[0]]
+                best_n = min(free, key=lambda n: abs(
+                    _mic_xy(sites[n], first_xy, cell2, inv2) - separation))
             used.append(best_n)
             site_xy = sites[best_n]
             atoms.positions[group, 0] += site_xy[0] - axy[0]
