@@ -509,27 +509,49 @@ def build_dissociated_endpoint(separation: float = None,
     used = []
     heights = []
 
+    top = _top_layer(atoms, metal)
+    top_xy = atoms.positions[top][:, :2]
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+
     for group in (left, right):
         # the largest atom in the fragment is the one that binds, so it is
-        # the anchor and its own radius sets the height. Averaging radii
+        # the anchor and its own radius sets the bond length. Averaging radii
         # across the whole adsorbate put a CH3 carbon at a hydrogen height.
         anchor = max(group, key=lambda k: covalent_radii[atoms[k].number])
-        r_group = covalent_radii[atoms[anchor].number]
-        h = height if height is not None else r_metal + r_group
+        bond = (height if height is not None
+                else r_metal + covalent_radii[atoms[anchor].number])
+
+        site_xy = atoms.positions[anchor, :2].copy()
+        free = [n for n in range(len(sites)) if n not in used]
+        if free:
+            axy = atoms.positions[anchor, :2].copy()
+            best_n = min(free, key=lambda n: np.linalg.norm(sites[n] - axy))
+            used.append(best_n)
+            site_xy = sites[best_n]
+            atoms.positions[group, 0] += site_xy[0] - axy[0]
+            atoms.positions[group, 1] += site_xy[1] - axy[1]
+
+        # Vertical offset such that the ACTUAL distance to the nearest surface
+        # atom is the covalent bond length. At a hollow the neighbours are
+        # laterally displaced, so setting the vertical drop equal to the bond
+        # length leaves the fragment sqrt(bond^2 + lateral^2) away: CH3 came
+        # out 3.13 A from Ni(100) instead of about 2.0.
+        df = (top_xy - site_xy) @ inv2
+        df -= np.round(df)
+        lateral = float(np.linalg.norm(df @ cell2, axis=1).min())
+        h = float(np.sqrt(max(bond ** 2 - lateral ** 2, 0.25)))
         heights.append(h)
 
-        if sites:
-            free = [s for n, s in enumerate(sites) if n not in used]
-            if free:
-                anchor_xy = atoms.positions[anchor, :2]
-                best_site = min(free,
-                                key=lambda s: np.linalg.norm(s - anchor_xy))
-                used.append(sites.index(best_site))
-                atoms.positions[group, 0] += best_site[0] - anchor_xy[0]
-                atoms.positions[group, 1] += best_site[1] - anchor_xy[1]
-
+        # Anchor on the binding atom, not the lowest atom in the fragment. For
+        # CH3 a hydrogen often sits below the carbon, so anchoring on the
+        # lowest atom gives the hydrogen the carbon's intended height and
+        # floats the carbon above the surface.
+        atoms.positions[group, 2] += (surface_z + h) - atoms.positions[anchor, 2]
         lowest = min(atoms.positions[i, 2] for i in group)
-        atoms.positions[group, 2] += (surface_z + h) - lowest
+        floor = surface_z + 1.0
+        if lowest < floor:
+            atoms.positions[group, 2] += floor - lowest
 
     height = heights
 
