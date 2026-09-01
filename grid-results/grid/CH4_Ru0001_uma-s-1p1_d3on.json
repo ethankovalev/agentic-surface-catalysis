@@ -1,0 +1,117 @@
+{
+  "computed_eV": null,
+  "reference_eV": 0.8,
+  "error_eV": null,
+  "reaction_class": "dissociation",
+  "validation": {},
+  "validation_detail": {},
+  "validated": false,
+  "run_error": "ReactionTimeout: per-reaction budget of 2700s exceeded",
+  "trace": {
+    "reaction_id": "CH4_Ru0001",
+    "slab": {
+      "metal": "Ru",
+      "facet": "0001",
+      "size": [
+        3,
+        3,
+        4
+      ],
+      "dopant": "none",
+      "n_atoms": 36
+    },
+    "initial": {
+      "species": "CH4",
+      "height": 2.5,
+      "site": "ontop",
+      "start_contact": 2.6535973537535793,
+      "stepped_site": false
+    },
+    "final": {
+      "separation": 4.6499999999999995,
+      "height": 1.8599999999999999,
+      "fragments": [
+        4,
+        1
+      ],
+      "broken_bond": "C-H",
+      "fragment_symbols": [
+        [
+          "C",
+          "H",
+          "H",
+          "H"
+        ],
+        [
+          "H"
+        ]
+      ]
+    },
+    "model_key": "uma-s-1p1",
+    "initial_relaxed": {
+      "energy_eV": -336.24267577981686,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 3.02040998804619
+    },
+    "final_relaxed": {
+      "energy_eV": -336.4758768287221,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 1.8924017937681235
+    },
+    "gasref": {
+      "height": 8.0
+    },
+    "gasref_relaxed": {
+      "energy_eV": -336.07195994630723,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 8.05073737303996
+    },
+    "neb": {
+      "barrier_eV": 2.5895154828995715,
+      "reaction_energy_eV": -0.23320106343896896,
+      "converged": false,
+      "with_d3": true,
+      "peak_image": 3,
+      "n_images": 26,
+      "fmax_target": 0.05,
+      "profile_eV": [
+        0.0,
+        -0.005142144262663351,
+        0.09123530950762415,
+        2.5895154828995715,
+        0.1465998852146413,
+        2.5312072479634935,
+        0.3750582400197118,
+        -0.17489294334666283,
+        0.042752177243414735,
+        -0.35209016009480365,
+        1.3712837497689634,
+        0.034143797964588884,
+        0.10144550572596245,
+        -0.0946078415021816,
+        -0.06835767019742889,
+        -0.08785842752183726,
+        -0.11988113320882121,
+        -0.17968077673685912,
+        -0.08448396859847662,
+        -0.17810417034439752,
+        -0.07099150299177381,
+        -0.08709328091373436,
+        -0.15649722961165935,
+        -0.25724508714063177,
+        -0.13419536615606376,
+        -0.23320106464711898
+      ]
+    },
+    "barrier_eV": 2.5895154828995715
+  },
+  "_grid_model_key": "uma-s-1p1",
+  "_grid_d3_label": "on",
+  "_grid_timestamp": "2026-08-30T11:27:26.331911+00:00"
+}

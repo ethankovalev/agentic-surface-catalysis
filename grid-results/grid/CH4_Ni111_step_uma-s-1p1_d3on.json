@@ -1,0 +1,120 @@
+{
+  "computed_eV": null,
+  "reference_eV": 0.8,
+  "error_eV": null,
+  "reaction_class": "dissociation",
+  "validation": {},
+  "validation_detail": {},
+  "validated": false,
+  "run_error": "ReactionTimeout: per-reaction budget of 2700s exceeded",
+  "trace": {
+    "reaction_id": "CH4_Ni111_step",
+    "slab": {
+      "metal": "Ni",
+      "facet": "111",
+      "size": [
+        6,
+        3,
+        5
+      ],
+      "dopant": "none",
+      "n_atoms": 80,
+      "stepped": true,
+      "step_edge_atoms": [
+        72,
+        73,
+        74,
+        75,
+        77,
+        78,
+        79
+      ],
+      "terrace_coordination": 9
+    },
+    "initial": {
+      "species": "CH4",
+      "height": 2.5,
+      "site": "step",
+      "start_contact": 2.581174328837167,
+      "stepped_site": true
+    },
+    "final": {
+      "separation": 4.1000000000000005,
+      "height": 1.6400000000000001,
+      "fragments": [
+        4,
+        1
+      ],
+      "broken_bond": "C-H",
+      "fragment_symbols": [
+        [
+          "C",
+          "H",
+          "H",
+          "H"
+        ],
+        [
+          "H"
+        ]
+      ]
+    },
+    "model_key": "uma-s-1p1",
+    "initial_relaxed": {
+      "energy_eV": -425.30926685234465,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 2.3399942824005078
+    },
+    "final_relaxed": {
+      "energy_eV": -425.72024938045297,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 1.6912916192912204
+    },
+    "gasref": {
+      "height": 8.0
+    },
+    "gasref_relaxed": {
+      "energy_eV": -425.08937312500495,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 8.06874919535598
+    },
+    "neb": {
+      "barrier_eV": 5.908280201575394,
+      "reaction_energy_eV": -0.41098251296887156,
+      "converged": false,
+      "with_d3": true,
+      "peak_image": 7,
+      "n_images": 18,
+      "fmax_target": 0.05,
+      "profile_eV": [
+        0.0,
+        -0.03458476868127036,
+        -0.05779983713966885,
+        -0.03364316694910485,
+        -0.049929782507717846,
+        -0.06914203094015647,
+        -0.01639281180649732,
+        5.908280201575394,
+        0.5154394322879057,
+        -0.36841738380064726,
+        -0.407490246978341,
+        -0.28152962776158574,
+        -0.19816630730218776,
+        0.13315655555311423,
+        -0.34899221492185006,
+        -0.3881171083010031,
+        -0.38939195228681456,
+        -0.41098250968826733
+      ]
+    },
+    "barrier_eV": 5.908280201575394
+  },
+  "_grid_model_key": "uma-s-1p1",
+  "_grid_d3_label": "on",
+  "_grid_timestamp": "2026-08-30T13:58:54.588555+00:00"
+}

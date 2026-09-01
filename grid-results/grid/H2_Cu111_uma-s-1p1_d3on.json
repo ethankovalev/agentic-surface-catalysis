@@ -1,0 +1,148 @@
+{
+  "computed_eV": 0.48581388522632096,
+  "reference_eV": 0.63,
+  "error_eV": -0.14418611477367904,
+  "reaction_class": "dissociation",
+  "validation": {
+    "convergence": true,
+    "noise_floor": true,
+    "dispersion": true,
+    "dispersion_consistent": true,
+    "gas_reference": true,
+    "fragments": true,
+    "geometry": true,
+    "reaction_consistency": true,
+    "path_resolved": true,
+    "endpoints_distinct": true
+  },
+  "validation_detail": {
+    "convergence": "all converged",
+    "noise_floor": "[uma-s-1p1] barrier 0.486 eV is above the 0.3 eV noise floor",
+    "dispersion": "contact 2.58 \u00c5, D3 on",
+    "dispersion_consistent": "initial_relaxed=True, final_relaxed=True, gasref_relaxed=True, neb=True",
+    "gas_reference": "gas-referenced barrier 0.486 eV, well depth 0.092 eV",
+    "fragments": "broke H-H, giving ['H'] and ['H']",
+    "geometry": "geometry sensible",
+    "reaction_consistency": "barrier 0.577 eV, reaction energy -0.301 eV",
+    "path_resolved": "largest single step is 59% of the barrier, between images 8 and 9",
+    "endpoints_distinct": "adsorbate bond 0.75 -> 2.67 \u00c5"
+  },
+  "validated": true,
+  "run_error": null,
+  "trace": {
+    "reaction_id": "H2_Cu111",
+    "slab": {
+      "metal": "Cu",
+      "facet": "111",
+      "size": [
+        3,
+        3,
+        4
+      ],
+      "dopant": "none",
+      "n_atoms": 36
+    },
+    "initial": {
+      "species": "H2",
+      "height": 2.5,
+      "site": "ontop",
+      "start_contact": 2.5,
+      "stepped_site": false
+    },
+    "final": {
+      "separation": 4.075,
+      "height": 1.6300000000000001,
+      "fragments": [
+        1,
+        1
+      ],
+      "broken_bond": "H-H",
+      "fragment_symbols": [
+        [
+          "H"
+        ],
+        [
+          "H"
+        ]
+      ]
+    },
+    "model_key": "uma-s-1p1",
+    "initial_relaxed": {
+      "energy_eV": -135.64704763676104,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 2.5793112705141983
+    },
+    "final_relaxed": {
+      "energy_eV": -135.9480874569221,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 1.7090813038764165
+    },
+    "gasref": {
+      "height": 8.0
+    },
+    "gasref_relaxed": {
+      "energy_eV": -135.5554442051959,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 8.007739378721075
+    },
+    "neb": {
+      "barrier_eV": 0.5774173167914682,
+      "reaction_energy_eV": -0.3010388700033104,
+      "converged": true,
+      "with_d3": true,
+      "peak_image": 7,
+      "n_images": 12,
+      "fmax_target": 0.05,
+      "profile_eV": [
+        0.0,
+        0.0034411408639698493,
+        0.014220812771640112,
+        0.03181031719429939,
+        0.08010500949791322,
+        0.18700142387626784,
+        0.35229222467310706,
+        0.5774173167914682,
+        0.3368675496163007,
+        -0.005544930539770121,
+        -0.21652986747076852,
+        -0.30103887348747094
+      ]
+    },
+    "barrier_eV": 0.48581388522632096,
+    "well_depth_eV": 0.09160343156514728,
+    "barrier_gas_eV": 0.48581388522632096,
+    "validation": {
+      "convergence": true,
+      "noise_floor": true,
+      "dispersion": true,
+      "dispersion_consistent": true,
+      "gas_reference": true,
+      "fragments": true,
+      "geometry": true,
+      "reaction_consistency": true,
+      "path_resolved": true,
+      "endpoints_distinct": true
+    },
+    "validation_detail": {
+      "convergence": "all converged",
+      "noise_floor": "[uma-s-1p1] barrier 0.486 eV is above the 0.3 eV noise floor",
+      "dispersion": "contact 2.58 \u00c5, D3 on",
+      "dispersion_consistent": "initial_relaxed=True, final_relaxed=True, gasref_relaxed=True, neb=True",
+      "gas_reference": "gas-referenced barrier 0.486 eV, well depth 0.092 eV",
+      "fragments": "broke H-H, giving ['H'] and ['H']",
+      "geometry": "geometry sensible",
+      "reaction_consistency": "barrier 0.577 eV, reaction energy -0.301 eV",
+      "path_resolved": "largest single step is 59% of the barrier, between images 8 and 9",
+      "endpoints_distinct": "adsorbate bond 0.75 -> 2.67 \u00c5"
+    }
+  },
+  "_grid_model_key": "uma-s-1p1",
+  "_grid_d3_label": "on",
+  "_grid_timestamp": "2026-08-28T10:02:30.442252+00:00"
+}

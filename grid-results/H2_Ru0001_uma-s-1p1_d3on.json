@@ -1,0 +1,148 @@
+{
+  "computed_eV": -0.04347229214209847,
+  "reference_eV": 0.0,
+  "error_eV": -0.04347229214209847,
+  "reaction_class": "dissociation",
+  "validation": {
+    "convergence": true,
+    "noise_floor": true,
+    "dispersion": true,
+    "dispersion_consistent": true,
+    "gas_reference": true,
+    "fragments": true,
+    "geometry": true,
+    "reaction_consistency": true,
+    "path_resolved": true,
+    "endpoints_distinct": true
+  },
+  "validation_detail": {
+    "convergence": "all converged",
+    "noise_floor": "[uma-s-1p1] barrier -0.043 eV is within the model's own error bar (0.3 eV) - consistent with a non-activated reaction, but not resolvable from zero",
+    "dispersion": "contact 3.11 \u00c5, D3 on",
+    "dispersion_consistent": "initial_relaxed=True, final_relaxed=True, gasref_relaxed=True, neb=True",
+    "gas_reference": "gas-referenced barrier -0.043 eV, well depth 0.058 eV",
+    "fragments": "broke H-H, giving ['H'] and ['H']",
+    "geometry": "geometry sensible",
+    "reaction_consistency": "barrier 0.015 eV, reaction energy -1.096 eV",
+    "path_resolved": "path nearly flat",
+    "endpoints_distinct": "adsorbate bond 0.75 -> 2.73 \u00c5"
+  },
+  "validated": true,
+  "run_error": null,
+  "trace": {
+    "reaction_id": "H2_Ru0001",
+    "slab": {
+      "metal": "Ru",
+      "facet": "0001",
+      "size": [
+        3,
+        3,
+        4
+      ],
+      "dopant": "none",
+      "n_atoms": 36
+    },
+    "initial": {
+      "species": "H2",
+      "height": 2.5,
+      "site": "ontop",
+      "start_contact": 2.5,
+      "stepped_site": false
+    },
+    "final": {
+      "separation": 4.425,
+      "height": 1.77,
+      "fragments": [
+        1,
+        1
+      ],
+      "broken_bond": "H-H",
+      "fragment_symbols": [
+        [
+          "H"
+        ],
+        [
+          "H"
+        ]
+      ]
+    },
+    "model_key": "uma-s-1p1",
+    "initial_relaxed": {
+      "energy_eV": -319.04262164672775,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 3.1104389525899516
+    },
+    "final_relaxed": {
+      "energy_eV": -320.13836934636527,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 1.884612561731298
+    },
+    "gasref": {
+      "height": 8.0
+    },
+    "gasref_relaxed": {
+      "energy_eV": -318.9842805927717,
+      "converged": true,
+      "with_d3": true,
+      "fmax_target": 0.02,
+      "closest_contact": 8.002737918345742
+    },
+    "neb": {
+      "barrier_eV": 0.014868761813943365,
+      "reaction_energy_eV": -1.095748168757268,
+      "converged": true,
+      "with_d3": true,
+      "peak_image": 3,
+      "n_images": 12,
+      "fmax_target": 0.05,
+      "profile_eV": [
+        0.0,
+        0.00512870607616378,
+        0.010879330446357471,
+        0.014868761813943365,
+        -0.010042676652972204,
+        -0.18917784659282688,
+        -0.4453528762733754,
+        -0.4704181867861621,
+        -0.6082610339193479,
+        -0.8069900459946666,
+        -0.9781219371362226,
+        -1.095748166262922
+      ]
+    },
+    "barrier_eV": -0.04347229214209847,
+    "well_depth_eV": 0.05834105395604183,
+    "barrier_gas_eV": -0.04347229214209847,
+    "validation": {
+      "convergence": true,
+      "noise_floor": true,
+      "dispersion": true,
+      "dispersion_consistent": true,
+      "gas_reference": true,
+      "fragments": true,
+      "geometry": true,
+      "reaction_consistency": true,
+      "path_resolved": true,
+      "endpoints_distinct": true
+    },
+    "validation_detail": {
+      "convergence": "all converged",
+      "noise_floor": "[uma-s-1p1] barrier -0.043 eV is within the model's own error bar (0.3 eV) - consistent with a non-activated reaction, but not resolvable from zero",
+      "dispersion": "contact 3.11 \u00c5, D3 on",
+      "dispersion_consistent": "initial_relaxed=True, final_relaxed=True, gasref_relaxed=True, neb=True",
+      "gas_reference": "gas-referenced barrier -0.043 eV, well depth 0.058 eV",
+      "fragments": "broke H-H, giving ['H'] and ['H']",
+      "geometry": "geometry sensible",
+      "reaction_consistency": "barrier 0.015 eV, reaction energy -1.096 eV",
+      "path_resolved": "path nearly flat",
+      "endpoints_distinct": "adsorbate bond 0.75 -> 2.73 \u00c5"
+    }
+  },
+  "_grid_model_key": "uma-s-1p1",
+  "_grid_d3_label": "on",
+  "_grid_timestamp": "2026-08-28T10:20:58.467272+00:00"
+}
