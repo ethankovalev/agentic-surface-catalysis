@@ -213,70 +213,6 @@ def build_stepped_slab(metal: str, facet: str = "111", nx: int = 6, ny: int = 3,
             f"{len(bottom)} fixed. Saved to slab.traj.")
 
 
-def _top_layer(atoms, metal_indices, tol=0.5):
-    """Indices of the metal atoms in the topmost surface layer."""
-    zmax = max(atoms.positions[i, 2] for i in metal_indices)
-    return [i for i in metal_indices if atoms.positions[i, 2] > zmax - tol]
-
-
-def _hollow_sites(atoms, metal_indices, n_grid=64):
-    """Lateral positions locally furthest from any top-layer metal atom.
-
-    A hollow is the point on the surface with the greatest clearance from
-    the surrounding metal atoms, so locating hollows as local maxima of the
-    distance field works for fcc(111), fcc(100) and hcp(0001) without the
-    code knowing which facet it is looking at. Checked against 3x3 cells:
-    18 sites on fcc(111) and hcp(0001) (the fcc and hcp hollows), 9 on
-    fcc(100) (the four-fold hollows).
-
-    Returns a list of xy positions. Note this cannot distinguish an fcc
-    hollow from an hcp one; they are both returned and the caller takes
-    whichever is nearest.
-    """
-    top = _top_layer(atoms, metal_indices)
-    cell = np.array(atoms.cell[:2, :2], dtype=float)
-    top_xy = atoms.positions[top][:, :2]
-    inv = np.linalg.inv(cell)
-
-    us = np.linspace(0.0, 1.0, n_grid, endpoint=False)
-    frac = np.array([[u, v] for u in us for v in us])
-    grid_xy = frac @ cell
-    shifts = np.array([[i, j] for i in (-1, 0, 1) for j in (-1, 0, 1)],
-                      dtype=float) @ cell
-    images = (top_xy[:, None, :] + shifts[None, :, :]).reshape(-1, 2)
-    d = np.linalg.norm(grid_xy[:, None, :] - images[None, :, :], axis=2)
-    clearance = d.min(axis=1).reshape(n_grid, n_grid)
-
-    dm = np.linalg.norm(top_xy[:, None, :] - images[None, :, :], axis=2)
-    dm[dm < 1e-6] = np.inf
-    nn = dm.min()
-
-    cmax = clearance.max()
-    peaks = []
-    for i in range(n_grid):
-        for j in range(n_grid):
-            c = clearance[i, j]
-            if c < 0.9 * cmax:
-                continue
-            neigh = [clearance[(i + di) % n_grid, (j + dj) % n_grid]
-                     for di in (-1, 0, 1) for dj in (-1, 0, 1)
-                     if (di, dj) != (0, 0)]
-            if c >= max(neigh) - 1e-9:
-                peaks.append(grid_xy[i * n_grid + j])
-
-    merged = []
-    for xy in peaks:
-        for k, (mxy, n) in enumerate(merged):
-            df = (xy - mxy) @ inv
-            df -= np.round(df)
-            if np.linalg.norm(df @ cell) < 0.3 * nn:
-                merged[k] = ((mxy * n + xy) / (n + 1), n + 1)
-                break
-        else:
-            merged.append((xy, 1))
-    return [xy for xy, _ in merged]
-
-
 def _z_layers(atoms, metal_indices, tol=0.6):
     """Metal atoms grouped into z-layers, highest first."""
     ordered = sorted((atoms.positions[i, 2], i) for i in metal_indices)
@@ -293,12 +229,37 @@ def _z_layers(atoms, metal_indices, tol=0.6):
     return list(reversed(layers))
 
 
+def _nn_distance(atoms, indices):
+    """Shortest distance between two atoms of one layer, under pbc."""
+    return min(atoms.get_distance(i, j, mic=True)
+               for i in indices for j in indices if i != j)
+
+
 def _hollows_one_layer(atoms, indices, n_grid=64):
-    """Hollow sites on one flat terrace, as (xy, z, clearance)."""
+    """Hollow sites on a single layer of metal atoms.
+
+    Returns (sites, nn): the sites as (xy, z, clearance) triples, and the
+    layer's nearest-neighbour distance, which the caller needs to judge
+    distances on this layer against.
+
+    A hollow is a local maximum of the in-plane distance to that layer's
+    atoms, within 10% of the widest such point. Locating hollows as maxima
+    of the distance field works for fcc(111), fcc(100) and hcp(0001)
+    without the code knowing which facet it is looking at. Checked against
+    3x3 cells: 18 sites on fcc(111) and hcp(0001) (the fcc and hcp
+    hollows), 9 on fcc(100) (the four-fold hollows). Note this cannot tell
+    an fcc hollow from an hcp one; both are returned and the caller takes
+    whichever it wants.
+
+    Clearance is returned with each site because the caller needs it to
+    work out how high to sit: at a hollow the neighbours are laterally
+    displaced, so the vertical drop is not the bond length.
+    """
     cell = np.array(atoms.cell[:2, :2], dtype=float)
     inv = np.linalg.inv(cell)
     xy = atoms.positions[indices][:, :2]
     z = float(np.mean(atoms.positions[indices][:, 2]))
+    nn = _nn_distance(atoms, indices)
 
     us = np.linspace(0.0, 1.0, n_grid, endpoint=False)
     grid = np.array([[u, v] for u in us for v in us]) @ cell
@@ -308,21 +269,31 @@ def _hollows_one_layer(atoms, indices, n_grid=64):
     d = np.linalg.norm(grid[:, None, :] - images[None, :, :], axis=2)
     clearance = d.min(axis=1).reshape(n_grid, n_grid)
 
-    dm = np.linalg.norm(xy[:, None, :] - images[None, :, :], axis=2)
-    dm[dm < 1e-6] = np.inf
-    nn = float(dm.min())
-
-    cmax = clearance.max()
-    peaks = []
+    tops, widest = [], 0.0
     for i in range(n_grid):
         for j in range(n_grid):
             c = clearance[i, j]
-            if c < 0.9 * cmax:
-                continue
+            if c > 0.85 * nn:
+                continue                # the carved void, not a binding site
             neigh = [clearance[(i + a) % n_grid, (j + b) % n_grid]
                      for a in (-1, 0, 1) for b in (-1, 0, 1) if (a, b) != (0, 0)]
-            if c >= max(neigh) - 1e-9:
-                peaks.append((grid[i * n_grid + j], c))
+            if c < max(neigh) - 1e-9:
+                continue
+            tops.append((grid[i * n_grid + j], c))
+            # Three or more atoms equidistant is what makes a point a hollow
+            # rather than a bridge, and the widest such point sets the scale
+            # everything else is judged against. Taking that scale from the
+            # distance field instead, as a flat surface can, fails on the
+            # upper terrace of a stepped slab: there the widest point of the
+            # field is the void the carve left, three times any real hollow,
+            # and measuring against it rejects every site on that terrace.
+            if c > widest and np.count_nonzero(d[i * n_grid + j] < 1.15 * c) >= 3:
+                widest = c
+
+    if widest == 0.0:
+        return [], nn          # nothing on this layer looks like a hollow
+
+    peaks = [(pt, c) for pt, c in tops if c >= 0.9 * widest]
 
     merged = []
     for pt, c in peaks:
@@ -335,34 +306,50 @@ def _hollows_one_layer(atoms, indices, n_grid=64):
         else:
             merged.append((pt, c, 1))
 
-    # A genuine hollow sits 0.58*nn (three-fold) to 0.71*nn (four-fold) from
-    # its neighbours. Anything much further is a hole where atoms were removed,
-    # not a binding site.
-    return [(pt, z, c) for pt, c, _ in merged if c <= 0.85 * nn]
+    return [(pt, z, c) for pt, c, _ in merged], nn
 
 
 def _surface_sites(atoms, metal_indices, max_layers=2):
     """Hollow sites on every exposed terrace, each carrying its own height.
 
-    A stepped slab has two surfaces at different heights, and their in-plane
-    projections overlap, so treating the surface as one flat sheet is wrong.
-    Doing it that way put the two nitrogen atoms of N2/Ru(0001) 3.26 A from
-    the nearest metal, hovering over the hole the carve left behind, because
-    the point furthest from the eight remaining upper-terrace atoms is the
-    void itself.
+    A stepped slab has two terraces at different heights whose in-plane
+    projections overlap, so one flat sheet of surface atoms is the wrong
+    model. Searched that way, the point furthest from the eight atoms of
+    the upper terrace is the void the carve left behind, and both nitrogen
+    atoms of N2/Ru(0001) were placed in it: 3.2 A from the nearest metal
+    atom against a 2.17 A covalent bond, and 4.5 A from the step edge the
+    reaction is supposed to happen at.
 
-    Each terrace is therefore searched separately and every site remembers the
-    height of the terrace it belongs to.
+    Each layer is therefore searched on its own and every site remembers
+    the height of the layer it belongs to. A hollow in a lower layer counts
+    only if it is exposed: nothing in a higher layer within 0.85 nearest
+    neighbour distances of it in-plane. Without that test the second layer
+    of a stepped slab offers hollows right across the cell, the ones roofed
+    over by the upper terrace included, and a nitrogen dropped into one of
+    those came out under the surface, 0.56 A from the atom above it.
     """
     layers = _z_layers(atoms, metal_indices)
     if not layers:
         return []
-    sites, top_n = [], len(layers[0])
-    for depth, indices in enumerate(layers[:max_layers]):
-        # the layer below only counts as surface if the one above is carved
-        if depth > 0 and top_n >= 0.8 * len(indices):
+
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+
+    sites, above, previous = [], [], None
+    for indices in layers[:max_layers]:
+        if len(indices) < 3:
+            break              # too few atoms to define a hollow
+        # a layer is surface only where the one above it was carved away
+        if previous is not None and len(previous) >= 0.8 * len(indices):
             break
-        sites.extend(_hollows_one_layer(atoms, indices))
+        found, nn = _hollows_one_layer(atoms, indices)
+        for xy, z, c in found:
+            roofed = any(_mic_xy(xy, atoms.positions[i, :2], cell2, inv2)
+                         < 0.85 * nn for i in above)
+            if not roofed:
+                sites.append((xy, z, c))
+        above.extend(indices)
+        previous = indices
     return sites
 
 
