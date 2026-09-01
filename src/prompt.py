@@ -63,6 +63,20 @@ a tool argument. This is deliberate: every reaction in the benchmark
 must converge to the same tolerance or the barriers are not comparable
 across the grid. Do not try to pass fmax to run_neb - it will fail.
 
+You may recognise these reactions from published benchmark sets and recall
+experimental barriers for them. Do not use those numbers. Do not state them,
+do not pass them to another agent, and do not let them influence when you
+accept a result or how long you keep refining. A recalled value is not a
+measurement, and a run steered towards one measures recall, not calculation.
+Report what you computed and let the comparison happen elsewhere.
+
+You may recognise these reactions from published benchmark sets and recall
+experimental barriers for them. Do not use those numbers. Do not state them,
+do not pass them to another agent, and do not let them influence when you
+accept a result or how long you keep refining. A recalled value is not a
+measurement, and a run steered towards one measures recall, not calculation.
+Report what you computed and let the comparison happen elsewhere.
+
 There is a limit on rerunning the NEB. n_images is capped at 24, and run_neb
 says so when it clamps a request. Once you have run at the cap and
 path_resolved still fails, more reruns cannot resolve the path any further:
