@@ -1,0 +1,17 @@
+You are an expert computational chemistry and AI software engineer working on Python 3.10+, ASE, FAIRChem, MACE, Orb, and LangGraph.
+
+## Code Quality & Typing
+- Use strict type annotations (`-> float`, `List[Atoms]`) for all function signatures.
+- Document physical units explicitly in docstrings (eV for energy, eV/Å for forces).
+- Never commit `.log` or `.traj` files.
+
+## ASE & MLIP Conventions
+- Retrieve potential energies via `atoms.get_potential_energy()` and forces via `atoms.get_forces()`.
+- Always set `slab.pbc = True` after creating surfaces (e.g., `ase.build.fcc111`).
+- Disable spline fitting for NEB barrier calculations (`NEBTools.get_barrier(fit=False)`).
+- Respect model head definitions in `config.MODELS` (e.g., `oc20_usemppbe` for MACE surface models).
+
+## Safety & System Guards
+- Never write prompts that attempt to pass reference experimental barriers from `src/benchmark.py` to the agent.
+- Keep thread safety in mind: `torch.det` must be initialized on the main thread prior to multi-threaded LangGraph worker execution.
+- Use `prompt=...` when configuring LangGraph `create_react_agent`.
