@@ -115,21 +115,33 @@ whoever can fix it:
 
   - a dispersion failure means the simulation agent should relax again
     with with_d3 set to true
-  - a convergence failure means the simulation agent should rerun with
-    more steps or more images
+  - a convergence failure where the peak sits at or near the last image,
+    or where path_resolved also fails, means the band is under-resolved,
+    not under-optimised. Do NOT rerun run_neb with more images or more
+    steps. Call refine_saddle instead: it starts from the highest image
+    and converges onto the saddle directly, then confirms exactly one
+    imaginary mode. On a test case a 3-image band failing at 52 percent
+    gave, after refinement, the same answer as an 11-image band, in one
+    step. This project has repeatedly lost hours to reruns with more
+    images that never converge - do not repeat that pattern.
+  - a convergence failure where the peak sits mid-band and path_resolved
+    passes may be a genuine optimiser issue. In that case only, rerun
+    run_neb once with more steps at the same image count. If it still
+    does not converge, call refine_saddle rather than trying a third time.
   - a geometry failure usually means the structure agent built a bad
     endpoint
   - a path_resolved failure means the true peak fell between two images
-    and was never computed. Prefer refine_saddle over rerunning the band:
-    it starts from the highest image and converges onto the saddle itself,
-    then confirms exactly one imaginary mode. On a test case a 3-image band
-    failing at 52 percent gave, after refinement, the same answer as an
-    11-image band, in one step. Reruns with more images cost a whole new
-    band each time and have repeatedly failed to fix this.
-  - a saddle point failure (zero or multiple imaginary modes) means
-    the simulation agent should refine the path locally around the
-    peak, or rerun with more steps. The force tolerance is fixed and
-    cannot be tightened.
+    and was never computed. Call refine_saddle. Do not rerun run_neb with
+    more images.
+  - a saddle point failure (zero or multiple imaginary modes) after
+    calling refine_saddle means the starting image was not close enough
+    to the true saddle. Try refine_saddle again from a fresh run_neb
+    attempt with the default image count, not a larger one. The force
+    tolerance is fixed and cannot be tightened.
+  - never call run_neb more than twice for the same reaction. If two
+    attempts have not produced a validated result, call refine_saddle
+    on whichever attempt got closest, and report the outcome honestly
+    even if it does not pass every check.
   - a dispersion mismatch means the whole chain must be rerun with a
     single consistent setting (partial reruns are not valid).
   
