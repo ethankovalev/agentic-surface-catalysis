@@ -31,3 +31,4 @@
   or harmless. Ignore.
 - ALWAYS use `python3 -m pip`, never bare `pip` - bare pip resolves to system
   Python and silently installs to the wrong place.
+- After cloning on a fresh pod, always: ln -sfn /workspace/agentic-surface-catalysis/data /root/agentic-surface-catalysis/data (checkpoints live on the volume, config.py resolves paths relative to the repo root on local disk)
