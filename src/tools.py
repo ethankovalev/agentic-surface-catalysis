@@ -892,6 +892,43 @@ def relax_structure(structure: str, model_key: str = None, with_d3: bool = True,
             f"D3 {'on' if with_d3 else 'OFF'}.")
 
 
+
+MAX_NEB_ATTEMPTS = 2
+
+
+def _neb_attempt_guard(attempts_so_far, peak_exists):
+    """Refuse a further band once the cap is reached.
+
+    Returns a refusal string, or None to allow the call.
+
+    The simulation agent decides to rerun run_neb the instant a band fails,
+    within the same turn, without consulting the validation agent. Routing
+    guidance placed in validation_agent_prompt is therefore never read at
+    the moment the decision is made. This guard sits in the tool, where the
+    agent cannot route around it.
+
+    Two is the cap because a third band has never resolved a peak the first
+    two could not: on N2/Ru(0001) successive bands returned 0.715 eV and
+    9.715 eV, both unconverged, while refine_saddle starts from the highest
+    image already computed.
+    """
+    if attempts_so_far < MAX_NEB_ATTEMPTS:
+        return None
+    if peak_exists:
+        return (
+            f"FAILED: run_neb has already run {attempts_so_far} times for this "
+            f"reaction, which is the cap. A third band does not resolve a peak "
+            f"the first two could not. Call refine_saddle: it starts from the "
+            f"highest image already computed, in work/peak.traj, and converges "
+            f"onto the saddle directly."
+        )
+    return (
+        f"FAILED: run_neb has already run {attempts_so_far} times for this "
+        f"reaction, which is the cap, and no peak image was saved. Report the "
+        f"reaction as unresolved rather than running another band."
+    )
+
+
 @tool
 def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
             max_steps: int = 400) -> str:

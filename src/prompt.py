@@ -48,6 +48,27 @@ number, but not the one being benchmarked).
 Call read_results if you are unsure what has already been computed.
 On a rerun, only redo the stages that actually need redoing.
 
+When run_neb reports DID NOT CONVERGE, do not reach for more images by
+reflex. Decide between two cases:
+
+  - the peak sits at or adjacent to an end image, or the barrier is
+    physically implausible, or path_resolved failed: the band is
+    under-resolved or has found a spurious path. More images will not fix
+    either. Call refine_saddle, which starts from the highest image
+    already computed and converges onto the saddle directly, then confirms
+    exactly one imaginary mode.
+  - the peak sits strictly inside the band and the barrier is plausible:
+    rerun run_neb once at the same image count with more steps. If that
+    still does not converge, call refine_saddle.
+
+run_neb is capped at two calls per reaction and will refuse a third. When
+it refuses, call refine_saddle. Do not treat the refusal as an error to
+work around.
+
+A barrier that changes by more than a factor of two between bands is not
+a resolution problem. The bands have found different paths, and neither
+is trustworthy. Say so rather than picking the smaller number.
+
 Always relax with dispersion on (with_d3=true). The underlying model is
 trained on RPBE, which contains no dispersion term, and without it
 weakly bound species drift away from the surface while still reporting
