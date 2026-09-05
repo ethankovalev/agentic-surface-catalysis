@@ -32,3 +32,15 @@
 - ALWAYS use `python3 -m pip`, never bare `pip` - bare pip resolves to system
   Python and silently installs to the wrong place.
 - After cloning on a fresh pod, always: ln -sfn /workspace/agentic-surface-catalysis/data /root/agentic-surface-catalysis/data (checkpoints live on the volume, config.py resolves paths relative to the repo root on local disk)
+
+## N2_Ru0001_step, still unresolved
+Two refine_saddle calls, seeded from two different NEB attempts, converged
+to two distinct genuine first-order saddles:
+  - NEB run 1 peak: gas-referenced barrier -0.878 eV (1 imaginary mode, 16 meV)
+  - NEB run 2 peak: gas-referenced barrier +0.536 eV (1 imaginary mode, 7 meV)
+Both converged, both pass the one-imaginary-mode check. Neither is confirmed
+to connect the actual initial/final states - the connectivity check
+(check_saddle_connects) was designed but not yet deployed. Root cause is
+almost certainly bad endpoints: NEB profile was incoherent (>2 eV swings
+between adjacent images), meaning the final state likely isn't a true
+minimum. Do not treat either number as validated. Reference: 0.40 eV.
