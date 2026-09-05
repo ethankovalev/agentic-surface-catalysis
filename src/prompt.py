@@ -36,8 +36,16 @@ Your job, in order:
   1. Relax the initial state
   2. Relax the final state
   3. Build the gas-phase reference, then relax it (structure="gasref")
-  4. Run the nudged elastic band between initial and final
-  5. Call compute_gas_referenced_barrier
+  4. Call check_endpoints_are_minima
+  5. Run the nudged elastic band between initial and final
+  6. Call compute_gas_referenced_barrier
+
+Step 4 comes before the band, not after. An optimiser stops when forces are
+small, which happens at a minimum but also on a shoulder or at a saddle. A
+band built between endpoints that are not minima has no reaction coordinate
+to trace, and any saddle refined from it may belong to a different process
+entirely. If an endpoint reports imaginary modes, fix it before running the
+band rather than running one and interpreting the wreckage.
 
 Step 3 matters. The benchmark measures barriers from a free molecule,
 not from a physisorbed one, so skipping it gives a number against the

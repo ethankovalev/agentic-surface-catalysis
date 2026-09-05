@@ -840,6 +840,81 @@ def refine_saddle(model_key: str = None, with_d3: bool = True,
             f"imaginary mode at {imag[0]:.0f} meV out of {n_modes}, as a "
             f"transition state requires. Saved to saddle.traj.")
 
+@tool
+def check_endpoints_are_minima(model_key: str = None, with_d3: bool = True,
+                               scope: str = "adsorbate") -> str:
+    """Verify the relaxed endpoints are genuine minima before running a band.
+
+    An optimiser stops when forces fall below tolerance. That can happen at a
+    minimum, but also on a shoulder or at a saddle. A band built between
+    endpoints that are not minima has no well defined reaction coordinate,
+    and the profile comes out incoherent.
+
+    On N2/Ru(0001) at a step, the band swung more than 2 eV between adjacent
+    images and two saddle refinements seeded from it converged to different
+    stationary points 1.4 eV apart. Neither was the transition state for the
+    reaction. That is the failure this check exists to catch, before the band
+    is ever run rather than after.
+
+    A minimum has zero imaginary vibrational modes. One or more means the
+    structure sits on a slope, and the endpoint needs rebuilding or
+    relaxing from a different starting geometry.
+
+    Run after relaxing both endpoints and before run_neb. Costs 6N force
+    evaluations per endpoint.
+    """
+    results, failed = [], False
+    for name in ("initial", "final"):
+        f = Path(_path(f"{name}.traj"))
+        if not f.exists():
+            return f"FAILED: no {name}.traj. Relax both endpoints first."
+
+        atoms = read(str(f))
+        atoms.calc = new_calculator(model_key or config.DEFAULT_MODEL,
+                                    with_d3=with_d3)
+        tags = atoms.get_tags()
+        ads = [i for i in range(len(atoms)) if tags[i] == 2]
+        indices = ads if scope == "adsorbate" else _mobile_indices(atoms)
+        if not indices:
+            return f"FAILED: no atoms to analyse in {name}.traj."
+
+        try:
+            imag, n_modes = _count_imaginary(
+                atoms, indices, _path(f"vib_{name}"))
+        except Exception as exc:
+            return (f"FAILED: mode analysis on {name} did not run "
+                    f"({type(exc).__name__}: {exc}).")
+
+        results.append((name, imag, n_modes))
+        if imag:
+            failed = True
+
+    store.put("endpoint_modes", {
+        name: {"imaginary_meV": imag, "n_modes": n, "is_minimum": not imag}
+        for name, imag, n in results
+    })
+
+    if not failed:
+        detail = ", ".join(f"{name} 0 of {n}" for name, _, n in results)
+        return (f"Both endpoints are genuine minima, zero imaginary modes "
+                f"({detail}). Safe to run the band.")
+
+    lines = []
+    for name, imag, n in results:
+        if imag:
+            modes = ", ".join(f"{m:.0f}" for m in imag)
+            lines.append(f"{name} has {len(imag)} imaginary mode(s) at "
+                         f"{modes} meV out of {n}")
+        else:
+            lines.append(f"{name} is a minimum")
+    return ("ENDPOINT IS NOT A MINIMUM: " + "; ".join(lines) + ". A band "
+            "between these will not trace a reaction coordinate, and any "
+            "saddle refined from it may belong to a different process. "
+            "Rebuild the endpoint at a different site, or relax it again "
+            "from a perturbed geometry, before running run_neb.")
+
+
+
 # Simulation tools
 
 @tool
@@ -1511,6 +1586,7 @@ SIMULATION_TOOLS = [
     relax_structure,
     run_neb,
     refine_saddle,
+    check_endpoints_are_minima,
     build_gas_reference,
     compute_gas_referenced_barrier,
     read_results,
