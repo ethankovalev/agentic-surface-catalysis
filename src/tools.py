@@ -915,6 +915,120 @@ def check_endpoints_are_minima(model_key: str = None, with_d3: bool = True,
 
 
 
+def _imaginary_mode_vector(atoms, indices, name):
+    """The single imaginary mode's frequency in meV and its eigenvector.
+
+    Returns (count, None) when there is not exactly one imaginary mode, so
+    the caller can report what it found rather than following a mode that
+    is not there.
+    """
+    import shutil
+    shutil.rmtree(name, ignore_errors=True)
+    try:
+        vib = Vibrations(atoms, indices=indices, name=name)
+        vib.run()
+        energies = vib.get_energies()
+        imag = [i for i, e in enumerate(energies)
+                if np.iscomplex(e) and abs(e.imag) * 1000.0 > SADDLE_IMAG_MIN_meV]
+        if len(imag) != 1:
+            return len(imag), None
+        return abs(energies[imag[0]].imag) * 1000.0, vib.get_mode(imag[0])
+    finally:
+        shutil.rmtree(name, ignore_errors=True)
+
+
+@tool
+def check_saddle_connects(model_key: str = None, with_d3: bool = True,
+                          displacement: float = 0.35) -> str:
+    """Check the refined saddle belongs to THIS reaction.
+
+    One imaginary mode proves a structure is a first-order saddle. It does
+    not prove it is the saddle for the reaction being computed. On
+    N2/Ru(0001) at a step, two refine_saddle calls seeded from two different
+    bands each converged cleanly, each reported exactly one imaginary mode,
+    and their gas-referenced barriers differed by 1.4 eV. Both were genuine
+    saddles. At most one of them was the transition state for dissociation.
+
+    This displaces the saddle along its imaginary mode in both directions,
+    relaxes each, and checks one side falls to the initial state and the
+    other to the final state. Falling to the same state twice, or to
+    neither, means the saddle sits on a different process and its energy is
+    not the barrier for this reaction.
+
+    Costs two short relaxations. Run after refine_saddle.
+    """
+    for name in ("saddle", "initial", "final"):
+        if not Path(_path(f"{name}.traj")).exists():
+            return f"FAILED: no {name}.traj. Run refine_saddle first."
+
+    saddle = read(_path("saddle.traj"))
+    initial = read(_path("initial.traj"))
+    final = read(_path("final.traj"))
+
+    tags = saddle.get_tags()
+    ads = [i for i in range(len(saddle)) if tags[i] == 2]
+    if len(ads) < 2:
+        return "FAILED: fewer than two adsorbate atoms; nothing to compare."
+
+    model_key = model_key or config.DEFAULT_MODEL
+
+    def pair(atoms):
+        return float(atoms.get_distance(ads[0], ads[1], mic=True))
+
+    d_initial, d_final = pair(initial), pair(final)
+    if abs(d_final - d_initial) < 1.0:
+        return (f"FAILED: the endpoints differ by only "
+                f"{abs(d_final - d_initial):.2f} A in adsorbate separation, "
+                f"too little to tell which one a relaxation fell to. Fix "
+                f"endpoints_distinct first.")
+
+    saddle.calc = new_calculator(model_key, with_d3=with_d3)
+    try:
+        imag, mode = _imaginary_mode_vector(saddle, ads, _path("vib_connect"))
+    except Exception as exc:
+        return f"FAILED: mode analysis did not run ({type(exc).__name__}: {exc})."
+    if mode is None:
+        return (f"FAILED: expected exactly one imaginary mode to follow, "
+                f"found {imag}. This is not a first-order saddle.")
+
+    landed = {}
+    for direction, label in ((1.0, "forward"), (-1.0, "backward")):
+        moved = saddle.copy()
+        moved.positions += direction * displacement * mode
+        moved.calc = new_calculator(model_key, with_d3=with_d3)
+        moved.set_constraint(saddle.constraints)
+        FIRE(moved, logfile="-").run(fmax=0.05, steps=200)
+        d = pair(moved)
+        landed[label] = (
+            d, "initial" if abs(d - d_initial) < abs(d - d_final) else "final")
+
+    fwd_d, fwd_where = landed["forward"]
+    bwd_d, bwd_where = landed["backward"]
+
+    store.put("saddle_connectivity", {
+        "connects": fwd_where != bwd_where,
+        "forward_pair_A": fwd_d, "forward_lands_on": fwd_where,
+        "backward_pair_A": bwd_d, "backward_lands_on": bwd_where,
+        "initial_pair_A": d_initial, "final_pair_A": d_final,
+        "imaginary_mode_meV": imag,
+    })
+
+    if fwd_where == bwd_where:
+        return (f"SADDLE DOES NOT CONNECT THE ENDPOINTS: following the "
+                f"imaginary mode both ways falls to the {fwd_where} state "
+                f"(adsorbate pair {fwd_d:.2f} and {bwd_d:.2f} A, against "
+                f"{d_initial:.2f} initial and {d_final:.2f} final). This "
+                f"saddle belongs to some other process. Its energy is not "
+                f"the barrier for this reaction.")
+
+    return (f"Saddle connects the endpoints. Following the imaginary mode "
+            f"({imag:.0f} meV) forward falls to the {fwd_where} state "
+            f"(pair {fwd_d:.2f} A) and backward to the {bwd_where} state "
+            f"(pair {bwd_d:.2f} A), against {d_initial:.2f} A initial and "
+            f"{d_final:.2f} A final. The barrier belongs to this reaction.")
+
+
+
 # Simulation tools
 
 @tool
@@ -1587,6 +1701,7 @@ SIMULATION_TOOLS = [
     run_neb,
     refine_saddle,
     check_endpoints_are_minima,
+    check_saddle_connects,
     build_gas_reference,
     compute_gas_referenced_barrier,
     read_results,

@@ -73,6 +73,13 @@ run_neb is capped at two calls per reaction and will refuse a third. When
 it refuses, call refine_saddle. Do not treat the refusal as an error to
 work around.
 
+After refine_saddle succeeds, always call check_saddle_connects. Exactly one
+imaginary mode means the structure is a saddle. It does not mean it is the
+saddle for this reaction. Two refinements seeded from different bands have
+each converged cleanly, each reported one imaginary mode, and disagreed by
+1.4 eV. Only following the mode to its endpoints settles which, if either,
+belongs here.
+
 A barrier that changes by more than a factor of two between bands is not
 a resolution problem. The bands have found different paths, and neither
 is trustworthy. Say so rather than picking the smaller number.
