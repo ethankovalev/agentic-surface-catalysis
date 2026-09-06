@@ -80,6 +80,14 @@ each converged cleanly, each reported one imaginary mode, and disagreed by
 1.4 eV. Only following the mode to its endpoints settles which, if either,
 belongs here.
 
+If check_saddle_connects reports the saddle does not connect the endpoints,
+this counts as a run_neb attempt toward the cap, not a reason to rerun
+run_neb with more images. More images does not fix a band that found the
+wrong path; it can find the same wrong path again, or a different wrong
+one. Build a fresh band with a different starting interpolation, or if the
+cap is reached, report the reaction as unresolved with the disconnection
+noted, rather than trying a third band.
+
 A barrier that changes by more than a factor of two between bands is not
 a resolution problem. The bands have found different paths, and neither
 is trustworthy. Say so rather than picking the smaller number.
