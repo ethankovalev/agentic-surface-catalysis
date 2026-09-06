@@ -64,3 +64,7 @@ UNTESTED. .venv-mace has no fairchem-core installed, so this is also an
 implicit test of whether src/tools.py's imports crash without it - check
 for module-level fairchem imports before running, same way MACE's lazy
 import was confirmed today.
+Confirmed: no module-level fairchem import in tools.py or calculators.py,
+so .venv-mace running an H2_Cu111 reaction should not crash on missing
+fairchem-core. Both backends' imports are lazy, inside their build
+functions only. Green light to actually try the MACE test command above.
