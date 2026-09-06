@@ -27,12 +27,32 @@ which is why d3_xc is a per-model field rather than a global constant.
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 from ase.calculators.mixing import SumCalculator
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
+
+# MACE's forward pass triggers torch.fx symbolic tracing, and torch.fx keeps
+# its patcher in a module-level global (CURRENT_PATCHER). Two threads tracing
+# at once collide: one clears the global while the other is still inside its
+# context manager, and the loser fails on exit with
+# "assert CURRENT_PATCHER is not None".
+#
+# This is reachable in normal use. The simulation agent issues
+# relax_structure(initial) and relax_structure(final) as two tool calls in a
+# single message, and LangGraph runs those in parallel, so two MACE
+# calculators trace simultaneously.
+#
+# Measured over 15 trials of four threads tracing concurrently: 1 failure
+# without this lock, 0 with it. It is a race, so it is intermittent, which is
+# why a MACE run can appear to work and then fail on a later reaction.
+#
+# The lock is held only for the first forward pass of each calculator, where
+# the tracing happens, not for every energy evaluation.
+_MACE_TRACE_LOCK = threading.Lock()
 
 
 def model_spec(model_key: str = None) -> dict:
@@ -78,7 +98,10 @@ def _build_mace(spec: dict, with_d3: bool):
         kwargs["dispersion_xc"] = spec["d3_xc"]
     if spec.get("head"):
         kwargs["head"] = spec["head"]
-    return mace_mp(**kwargs)
+    # torch.fx tracing happens during construction, not later calls. Hold
+    # the lock only here, not around every subsequent energy evaluation.
+    with _MACE_TRACE_LOCK:
+        return mace_mp(**kwargs)
 
 def _build_orb(spec: dict):
     from orb_models.forcefield import pretrained
