@@ -68,3 +68,17 @@ Confirmed: no module-level fairchem import in tools.py or calculators.py,
 so .venv-mace running an H2_Cu111 reaction should not crash on missing
 fairchem-core. Both backends' imports are lazy, inside their build
 functions only. Green light to actually try the MACE test command above.
+
+## MACE fails H2_Cu111 twice, cleanly, where UMA succeeds easily
+Full validation chain ran correctly and refused two false positives:
+  NEB 1: barrier 0.025 eV, saddle confirmed (1 imaginary mode, 7 meV),
+         connectivity check FAILED - both IRC directions fall to initial state
+  NEB 2: barrier 0.734 eV, saddle confirmed (1 imaginary mode, 87 meV),
+         connectivity check FAILED - both IRC directions fall to final state
+Two genuine saddles, neither connecting initial to final, barriers 30x apart.
+Cap correctly reached after 2 attempts, reaction correctly reported unresolved.
+UMA validated this same reaction cleanly on the first attempt (0.486 eV).
+This is a real cross-model finding: MACE's NEB interpolation is struggling
+on a system UMA handles without issue. Worth investigating whether this is
+MACE-specific (float32 vs float64, dispersion handling, IDPP interpolation
+sensitivity) or a genuine model-quality difference on this PES.
