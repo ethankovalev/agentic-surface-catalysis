@@ -44,3 +44,23 @@ to connect the actual initial/final states - the connectivity check
 almost certainly bad endpoints: NEB profile was incoherent (>2 eV swings
 between adjacent images), meaning the final state likely isn't a true
 minimum. Do not treat either number as validated. Reference: 0.40 eV.
+
+## MACE invocation, verified against actual code
+Override var: MLIP_MODEL (not MACE_MODEL or anything else), read in
+config.py:94 as os.environ.get("MLIP_MODEL", "uma-s-1p1").
+_build_mace uses mace_mp(model=checkpoint_path, default_dtype="float64",
+dispersion=with_d3). Checkpoint path resolves via the data symlink already
+in place: data/mace-mh-1/mace-mh-1.model.
+
+First test command (day 3, not yet run):
+  deactivate
+  source /workspace/agentic-surface-catalysis/.venv-mace/bin/activate
+  export MLIP_MODEL=mace-mh-1
+  export MLIP_DEVICE=cuda
+  export ANTHROPIC_API_KEY=<key>
+  nohup python invoke.py --single H2_Cu111 > mace_test1.log 2>&1 &
+
+UNTESTED. .venv-mace has no fairchem-core installed, so this is also an
+implicit test of whether src/tools.py's imports crash without it - check
+for module-level fairchem imports before running, same way MACE's lazy
+import was confirmed today.
