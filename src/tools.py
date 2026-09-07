@@ -394,6 +394,31 @@ def _step_edge_atoms(slab, reference_coordination: int) -> list:
     return [i for i in range(len(slab))
             if tags[i] == 1 and counts[i] < reference_coordination]
 
+# A diatomic dissociating on a surface approaches with its bond roughly
+# parallel to the surface, so both atoms can reach binding sites. ASE's g2
+# database returns diatomics aligned along z, standing perpendicular.
+#
+# Left unrotated, the reaction path has to rotate the molecule 90 degrees,
+# stretch the bond and move both atoms to their sites, all inside the same
+# interpolation. On H2/Cu(111) that produced bands whose peak sat off the
+# dissociation path entirely: refinement from those peaks converged to a
+# stationary point with one hydrogen 1.69 A inside the slab.
+#
+# Only diatomics are rotated. Polyatomics like CH4 have no single bond axis
+# to align and are left as the database supplies them.
+
+
+def _orient_for_dissociation(ads):
+    """Lay a diatomic's bond parallel to the surface. Others are unchanged."""
+    if len(ads) != 2:
+        return ads
+    axis = ads.positions[1] - ads.positions[0]
+    if np.linalg.norm(axis) < 1e-6:
+        return ads
+    ads.rotate(axis, (1.0, 0.0, 0.0), center="COM")
+    return ads
+
+
 @tool
 def place_adsorbate(species: str, height: float = 2.5,
                     site: str = "ontop", overhang: float = 0.5) -> str:
@@ -434,6 +459,8 @@ def place_adsorbate(species: str, height: float = 2.5,
     except Exception:
         return (f"FAILED: '{species}' is not in ASE's g2 database. "
                 "Use a small molecule name like H2, N2, CH4, CO, O2.")
+
+    ads = _orient_for_dissociation(ads)
 
     note = ""
 
