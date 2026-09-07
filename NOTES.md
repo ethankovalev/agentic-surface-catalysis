@@ -82,3 +82,18 @@ This is a real cross-model finding: MACE's NEB interpolation is struggling
 on a system UMA handles without issue. Worth investigating whether this is
 MACE-specific (float32 vs float64, dispersion handling, IDPP interpolation
 sensitivity) or a genuine model-quality difference on this PES.
+
+## Subsurface saddle found on H2_Cu111 (UMA)
+refine_saddle returned a genuine first-order saddle (one imaginary mode,
+32.6 meV) with one hydrogen at -1.69 A relative to the top metal layer,
+i.e. inside the slab. It is a real stationary point for subsurface H
+penetration, not for dissociation. check_saddle_connects correctly rejected
+it (both IRC directions relaxed to a ~2.8 A basin, neither endpoint), and
+this was reproducible across displacements from 0.05 to 0.35 A, so it is
+not a displacement-magnitude artefact.
+check_geometry now flags adsorbate atoms below MIN_ADSORBATE_HEIGHT (0.3 A)
+in initial, final and saddle. closest_contact could not catch it: the buried
+H was 1.68 A from its nearest Cu, an ordinary bond length.
+Root cause is still upstream - the NEB did not converge and its peak image
+was off the dissociation path, so refinement had a bad seed. Same signature
+appeared on MACE/H2_Cu111 yesterday.
