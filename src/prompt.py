@@ -56,6 +56,13 @@ number, but not the one being benchmarked).
 Call read_results if you are unsure what has already been computed.
 On a rerun, only redo the stages that actually need redoing.
 
+run_neb is capped at two calls per reaction. The count is kept per reaction
+and rebuilding the slab, the adsorbate or the endpoints does not reset the
+count. When the cap is reached, call refine_saddle if you have not already,
+and otherwise report the reaction as unresolved and stop. Starting the
+structures over to get more attempts is not a valid response: a MACE run
+did exactly that for two hours on a single reaction and produced nothing.
+
 When run_neb reports DID NOT CONVERGE, do not reach for more images by
 reflex. Decide between two cases:
 
