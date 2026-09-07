@@ -1524,6 +1524,36 @@ def check_fragments_sensible() -> str:
     return f"fragments: {'PASS' if passed else 'FAIL'} - {detail}"
 
 
+# Minimum height of an adsorbate atom above the top metal layer, in Angstrom.
+# Anything below this has penetrated the slab rather than bonded to it.
+MIN_ADSORBATE_HEIGHT = 0.3
+
+
+def _subsurface_adsorbates(atoms):
+    """Adsorbate atoms sitting at or below the top metal layer.
+
+    A refined saddle on H2/Cu(111) came back with one hydrogen at -1.69 A,
+    embedded in the slab. It was a genuine first-order saddle with exactly
+    one imaginary mode, but for subsurface hydrogen penetration rather than
+    dissociation, so refine_saddle and the mode count both accepted it.
+
+    closest_contact cannot catch this: the atom was 1.68 A from its nearest
+    metal neighbour, an ordinary bond length whether the atom is above the
+    surface or inside it. Height is the discriminator, not distance.
+
+    Returns a list of (index, symbol, height) for offending atoms.
+    """
+    tags = atoms.get_tags()
+    ads = [i for i in range(len(atoms)) if tags[i] == 2]
+    metal = [i for i in range(len(atoms)) if tags[i] != 2]
+    if not ads or not metal:
+        return []
+    top_z = max(atoms.positions[m, 2] for m in metal)
+    return [(i, atoms[i].symbol, float(atoms.positions[i, 2] - top_z))
+            for i in ads
+            if atoms.positions[i, 2] - top_z < MIN_ADSORBATE_HEIGHT]
+
+
 @tool
 def check_geometry() -> str:
     """Check the geometry is physically sensible.
@@ -1548,6 +1578,23 @@ def check_geometry() -> str:
             problems.append(
                 f"barrier peak is at endpoint image {peak}, so there is no "
                 "hill between the endpoints")
+
+    # Adsorbate atoms must sit above the surface in every structure that
+    # exists. A saddle with a hydrogen inside the slab is a stationary point
+    # for subsurface penetration, not for the reaction being computed.
+    for name in ("initial", "final", "saddle"):
+        f = Path(_path(f"{name}.traj"))
+        if not f.exists():
+            continue
+        try:
+            buried = _subsurface_adsorbates(read(str(f)))
+        except Exception:
+            continue
+        for _, symbol, height in buried:
+            problems.append(
+                f"{name}: {symbol} sits {height:+.2f} A relative to the top "
+                f"metal layer, so it is inside the slab rather than bonded "
+                f"to the surface")
 
     passed = not problems
     detail = "geometry sensible" if passed else "; ".join(problems)
