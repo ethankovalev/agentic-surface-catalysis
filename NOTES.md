@@ -107,3 +107,18 @@ overshoot past the genuine adjacent-site product, and path_resolved not
 deferring to a confirmed connected saddle. Error is consistent in sign and
 magnitude with UMA's Cu(100) undershoot (-0.21 eV), supporting the
 dispersion-overcorrection hypothesis rather than indicating a new problem.
+
+## D3-off test on H2_Cu111: dispersion hypothesis confirmed, more nuanced than expected
+D3 on:  barrier_gas_eV = 0.449 eV  (error -0.18 eV vs 0.63 eV reference)
+D3 off: barrier_gas_eV = 0.764 eV  (error +0.13 eV vs 0.63 eV reference)
+Both fully validated, all ten checks pass, saddle connectivity confirmed
+both directions in both runs. D3 does not just shift the barrier by a
+constant - it overcorrects past the true value in the other direction.
+Well depth drops from 0.101 eV (D3 on) to 0.004 eV (D3 off), confirming D3
+is responsible for the physisorption well, as expected physically.
+Working picture: D3 stabilises the transition state (close to the metal)
+more than the reactant, lowering the barrier below truth; without D3 the
+base UMA functional has its own smaller positive bias. True answer likely
+sits between the two settings. Worth repeating on Cu100 and Pt111 once
+those validate cleanly, to see if the pattern (undershoot on, overshoot
+off) holds across surfaces.
