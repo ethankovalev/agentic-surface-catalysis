@@ -57,8 +57,6 @@ def run(rid, spec):
         worst = max(worst, abs(np.linalg.norm(d) - np.linalg.norm(mic)))
     t("1 no periodic wrap", worst < 0.01, f"raw vs mic differ by {worst:.3f} A")
 
-      f"fractional range {fr.min():.2f} to {fr.max():.2f}")
-
     # 3. slabs aligned between the two endpoints
     shift = np.abs(fin.positions[metal] - ini.positions[metal]).max()
     t("3 slabs aligned", shift < 0.01, f"max metal shift {shift:.4f} A")
