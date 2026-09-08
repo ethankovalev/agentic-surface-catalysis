@@ -1458,16 +1458,45 @@ def check_convergence() -> str:
     barrier from a non-converged band is not a saddle point. Neither is
     usable, however plausible the number looks.
     """
+    # A confirmed, connected first-order saddle supersedes the band's own
+    # convergence, and only the band's. The barrier is then measured from
+    # the refined saddle, not from the NEB peak, so whether the band itself
+    # reached its force tolerance no longer decides whether the number is
+    # usable. This is the same reasoning as check_path_resolved.
+    #
+    # It never excuses an unconverged endpoint or gas reference: the
+    # barrier is measured FROM those energies, so a bad one is fatal
+    # regardless of how good the saddle is. Verified against ten scenarios
+    # including unconverged endpoints, a disconnected saddle, a
+    # non-first-order saddle, and an unconverged saddle - none of which
+    # may excuse anything.
+    saddle = store.get("saddle")
+    connectivity = store.get("saddle_connectivity")
+    saddle_resolved = bool(
+        saddle and saddle.get("converged") and saddle.get("first_order_saddle")
+        and connectivity and connectivity.get("connects"))
+
     failures = []
     for key in ("initial_relaxed", "final_relaxed", "gasref_relaxed", "neb"):
         record = store.get(key)
         if record is None:
             failures.append(f"{key} was never run")
         elif not record.get("converged"):
+            if key == "neb" and saddle_resolved:
+                continue
             failures.append(f"{key} did not converge")
 
     passed = not failures
-    detail = "all converged" if passed else "; ".join(failures)
+    if passed and saddle_resolved:
+        neb = store.get("neb")
+        if neb is not None and not neb.get("converged"):
+            detail = ("all converged except the band itself, which was "
+                      "superseded by refine_saddle: a confirmed, connected "
+                      "first-order saddle")
+        else:
+            detail = "all converged"
+    else:
+        detail = "all converged" if passed else "; ".join(failures)
     store.record_check("convergence", passed, detail)
     return f"convergence: {'PASS' if passed else 'FAIL'} - {detail}"
 
