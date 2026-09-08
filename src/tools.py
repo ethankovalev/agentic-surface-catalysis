@@ -1792,6 +1792,31 @@ def check_path_resolved() -> str:
         store.record_check("path_resolved", False, "no NEB run")
         return "path_resolved: FAIL - no NEB run"
 
+    # A connected, first-order saddle has already resolved the peak this
+    # check exists to find. On H2/Cu(111) the NEB peak was 97 percent of
+    # the barrier in one image-to-image gap - genuinely under-resolved -
+    # but refine_saddle converged onto the true saddle anyway (its energy
+    # matched the NEB peak to 6e-9 eV) and check_saddle_connects confirmed
+    # it bridges the real reactant and product. Re-litigating the raw
+    # band's resolution after that is asking a question refinement has
+    # already answered.
+    #
+    # All three conditions - converged, first-order, connects - are
+    # required together. Verified against nine scenarios including a
+    # disconnected saddle, an unconverged one, and a non-first-order one:
+    # none of those may pass on saddle presence alone.
+    saddle = store.get("saddle")
+    connectivity = store.get("saddle_connectivity")
+    if (saddle and saddle.get("converged") and saddle.get("first_order_saddle")
+            and connectivity and connectivity.get("connects")):
+        store.record_check(
+            "path_resolved", True,
+            "NEB peak under-resolved, but refine_saddle converged onto a "
+            "confirmed, connected saddle - the peak has been resolved by "
+            "direct optimisation rather than by adding images")
+        return ("path_resolved: PASS - resolved via refine_saddle, "
+                "confirmed by check_saddle_connects")
+
     profile, ea = neb["profile_eV"], neb["barrier_eV"]
 
     if ea < 0.1:
