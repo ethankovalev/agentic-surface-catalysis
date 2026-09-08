@@ -97,3 +97,13 @@ H was 1.68 A from its nearest Cu, an ordinary bond length.
 Root cause is still upstream - the NEB did not converge and its peak image
 was off the dissociation path, so refinement had a bad seed. Same signature
 appeared on MACE/H2_Cu111 yesterday.
+
+## H2_Cu111 fully validated - first since the wrap-bug chain of fixes
+barrier_gas_eV = 0.449 eV (reference 0.63 eV, error -0.18 eV)
+All ten checks pass, including path_resolved and saddle_connectivity for
+the first time. Root causes fixed across two days: perpendicular molecule
+orientation, periodic-wrap causing an 11.8 A phantom NEB path, endpoint
+overshoot past the genuine adjacent-site product, and path_resolved not
+deferring to a confirmed connected saddle. Error is consistent in sign and
+magnitude with UMA's Cu(100) undershoot (-0.21 eV), supporting the
+dispersion-overcorrection hypothesis rather than indicating a new problem.
