@@ -539,6 +539,32 @@ def place_adsorbate(species: str, height: float = 2.5,
             f"Closest adsorbate-metal contact {contact:.2f} Å.{note} "
             f"Saved to initial.traj.")
 
+def _wrap_to_nearest_image(atoms, group, reference_xy):
+    """Move a fragment to its minimum-image position near reference_xy.
+
+    Fragment placement pushes atoms apart and then snaps them to hollow
+    sites, and the site chosen can lie outside the cell in stored
+    coordinates. That is physically the same position, but the NEB
+    interpolates stored coordinates, not minimum images, so an atom
+    recorded 11.8 A away is dragged right across the slab and back when
+    its true displacement is 1.5 A. The band arcs over the surface, the
+    path is not the reaction coordinate, and every saddle refined from it
+    belongs to some other process.
+
+    Measured on H2/Cu(111): raw lateral moves of 11.81 and 7.60 A against
+    true minimum-image moves of 1.45 and 2.19 A, in a cell 7.66 A wide.
+    """
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+    anchor = max(group, key=lambda k: covalent_radii[atoms[k].number])
+    delta = atoms.positions[anchor, :2] - np.asarray(reference_xy, dtype=float)
+    frac = delta @ inv2
+    correction = np.round(frac) @ cell2
+    atoms.positions[group, 0] -= correction[0]
+    atoms.positions[group, 1] -= correction[1]
+    return atoms
+
+
 @tool
 def build_dissociated_endpoint(separation: float = None,
                                height: float = None) -> str:
@@ -676,6 +702,16 @@ def build_dissociated_endpoint(separation: float = None,
             atoms.positions[group, 2] += floor - lowest
 
     height = heights
+
+    # Bring each fragment back to its minimum image near where the molecule
+    # started, so the stored coordinates describe the short path rather than
+    # one that crosses the cell.
+    start = read(str(init_file))
+    start_tags = start.get_tags()
+    start_ads = [i for i in range(len(start)) if start_tags[i] == 2]
+    reference_xy = start.positions[start_ads][:, :2].mean(axis=0)
+    for group in (left, right):
+        atoms = _wrap_to_nearest_image(atoms, group, reference_xy)
 
     write(_path("final.traj"), atoms)
 
