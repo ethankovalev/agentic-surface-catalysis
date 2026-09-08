@@ -612,8 +612,16 @@ def build_dissociated_endpoint(separation: float = None,
         # and if the nearest site is still inside that margin the search
         # moves out to the next real site rather than an interpolated
         # point that corresponds to no actual binding site.
-        separation = None  # resolved against real sites below
-        min_safe_separation = 2.0 * best
+        #
+        # This initial value only sets the first lateral push, before the
+        # site search below moves each fragment onto a real hollow and
+        # overwrites it with the actual site-to-site distance. 2.5x the
+        # summed covalent radii is a reasonable rough push - anything in
+        # the right neighbourhood works, since the site snap corrects it.
+        use_site_search = True
+        separation = 2.5 * (r_metal + r_ads)
+    else:
+        use_site_search = False
 
     # Two hydrogens on opposite sides of a carbon sit further apart than
     # any C-H bond, so the old "longest internal distance" rule split
@@ -635,6 +643,11 @@ def build_dissociated_endpoint(separation: float = None,
                 "may already be dissociated, or the geometry is distorted.")
 
     a, b = pair
+
+    # `best` is the intact bond length, only known once the bonded pair has
+    # been found, so the recombination-safe margin is computed here rather
+    # than up with the separation default.
+    min_safe_separation = 2.0 * best
 
     left = [a] + [k for k in ads if k not in (a, b)
                   and atoms.get_distance(k, a, mic=True)
@@ -683,22 +696,28 @@ def build_dissociated_endpoint(separation: float = None,
                 # first fragment: the hollow nearest where it already sits
                 best_n = min(free, key=lambda n: _mic_xy(sites[n][0], axy, cell2, inv2))
             else:
-                # Second fragment: the nearest real site to the first that
-                # clears the recombination-safe margin. A continuous target
-                # distance corresponds to no actual binding site and either
-                # overshoots into a further basin (the H2/Cu(111) bug this
-                # replaces) or, matched too eagerly, collapses two fragments
-                # onto neighbouring hollows - on Ru(0001) two N atoms
-                # separated to 3.97 A ended up 1.91 A apart after snapping
-                # and recombined into N2 during relaxation.
                 first_xy = sites[used[0]][0]
-                by_distance = sorted(
-                    free, key=lambda n: _mic_xy(sites[n][0], first_xy, cell2, inv2))
-                best_n = next(
-                    (n for n in by_distance
-                     if _mic_xy(sites[n][0], first_xy, cell2, inv2) >= min_safe_separation),
-                    by_distance[-1])
-                separation = _mic_xy(sites[best_n][0], first_xy, cell2, inv2)
+                if use_site_search:
+                    # Nearest real site to the first that clears the
+                    # recombination-safe margin. A continuous target
+                    # distance corresponds to no actual binding site and
+                    # either overshoots into a further basin (the
+                    # H2/Cu(111) bug this replaces) or, matched too
+                    # eagerly, collapses two fragments onto neighbouring
+                    # hollows - on Ru(0001) two N atoms separated to
+                    # 3.97 A ended up 1.91 A apart after snapping and
+                    # recombined into N2 during relaxation.
+                    by_distance = sorted(
+                        free, key=lambda n: _mic_xy(sites[n][0], first_xy, cell2, inv2))
+                    best_n = next(
+                        (n for n in by_distance if _mic_xy(
+                            sites[n][0], first_xy, cell2, inv2) >= min_safe_separation),
+                        by_distance[-1])
+                else:
+                    # An explicit separation was requested: honour it, same
+                    # as before.
+                    best_n = min(free, key=lambda n: abs(
+                        _mic_xy(sites[n][0], first_xy, cell2, inv2) - separation))
             used.append(best_n)
             site_xy, site_z, lateral = sites[best_n]
             atoms.positions[group, 0] += site_xy[0] - axy[0]
