@@ -1062,8 +1062,21 @@ def check_saddle_connects(model_key: str = None, with_d3: bool = True,
         moved.set_constraint(saddle.constraints)
         FIRE(moved, logfile="-").run(fmax=0.05, steps=200)
         d = pair(moved)
-        landed[label] = (
-            d, "initial" if abs(d - d_initial) < abs(d - d_final) else "final")
+        # Classify by which side of the midpoint between the two endpoint
+        # separations the relaxation landed, not by nearest endpoint.
+        #
+        # Dissociation on a surface is often two steps: the molecule splits
+        # into adjacent sites, then the fragments diffuse apart. On
+        # H2/Cu(111) the IRC from the true dissociation saddle relaxes to a
+        # pair separation of 2.03 A, two chemisorbed H atoms 1.62 A from
+        # their nearest Cu. That is genuinely dissociated, 2.7 times the
+        # 0.74 A bond, but it is not the 3.89 A final state, which lies
+        # 0.21 eV lower and is reached by a later diffusion step.
+        #
+        # Nearest-endpoint matching called that "initial" and rejected a
+        # correct saddle. What matters is which basin it fell into.
+        midpoint = 0.5 * (d_initial + d_final)
+        landed[label] = (d, "initial" if d < midpoint else "final")
 
     fwd_d, fwd_where = landed["forward"]
     bwd_d, bwd_where = landed["backward"]
