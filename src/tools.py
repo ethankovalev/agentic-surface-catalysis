@@ -596,7 +596,24 @@ def build_dissociated_endpoint(separation: float = None,
     r_ads = sum(covalent_radii[atoms[i].number] for i in ads) / len(ads)
 
     if separation is None:
-        separation = 2.5 * (r_metal + r_ads)
+        # The old default, 2.5x the summed covalent radii, targets a real
+        # site but overshoots past the genuine adjacent-site product into a
+        # second, further-diffused minimum. On H2/Cu(111) it aimed for
+        # 4.08 A and landed the endpoint at 3.89 A, while the actual
+        # transition state connects to an adjacent-site product only 2.03 A
+        # apart (confirmed by relaxing backward from the real saddle along
+        # its imaginary mode). The saddle was correct; the endpoint was
+        # aimed at the wrong basin.
+        #
+        # This targets the nearest real adjacent site instead of an
+        # arbitrary continuous distance, with a safety margin against
+        # recombination. 1.4x the intact bond let N2/Ru0001 relax back
+        # into N2 at 1.9 A in an earlier bug, so the margin here is 2.0x,
+        # and if the nearest site is still inside that margin the search
+        # moves out to the next real site rather than an interpolated
+        # point that corresponds to no actual binding site.
+        separation = None  # resolved against real sites below
+        min_safe_separation = 2.0 * best
 
     # Two hydrogens on opposite sides of a carbon sit further apart than
     # any C-H bond, so the old "longest internal distance" rule split
@@ -666,16 +683,22 @@ def build_dissociated_endpoint(separation: float = None,
                 # first fragment: the hollow nearest where it already sits
                 best_n = min(free, key=lambda n: _mic_xy(sites[n][0], axy, cell2, inv2))
             else:
-                # Second fragment: the hollow whose distance from the first
-                # best matches the separation actually requested. Choosing
-                # nearest-to-anchor independently for both fragments collapsed
-                # them onto neighbouring hollows - on Ru(0001) two N atoms
-                # separated to 3.97 A ended up 1.91 A apart after snapping and
-                # recombined into N2 during relaxation, so endpoints_distinct
-                # failed and the barrier was meaningless.
+                # Second fragment: the nearest real site to the first that
+                # clears the recombination-safe margin. A continuous target
+                # distance corresponds to no actual binding site and either
+                # overshoots into a further basin (the H2/Cu(111) bug this
+                # replaces) or, matched too eagerly, collapses two fragments
+                # onto neighbouring hollows - on Ru(0001) two N atoms
+                # separated to 3.97 A ended up 1.91 A apart after snapping
+                # and recombined into N2 during relaxation.
                 first_xy = sites[used[0]][0]
-                best_n = min(free, key=lambda n: abs(
-                    _mic_xy(sites[n][0], first_xy, cell2, inv2) - separation))
+                by_distance = sorted(
+                    free, key=lambda n: _mic_xy(sites[n][0], first_xy, cell2, inv2))
+                best_n = next(
+                    (n for n in by_distance
+                     if _mic_xy(sites[n][0], first_xy, cell2, inv2) >= min_safe_separation),
+                    by_distance[-1])
+                separation = _mic_xy(sites[best_n][0], first_xy, cell2, inv2)
             used.append(best_n)
             site_xy, site_z, lateral = sites[best_n]
             atoms.positions[group, 0] += site_xy[0] - axy[0]
