@@ -309,7 +309,52 @@ def _hollows_one_layer(atoms, indices, n_grid=64):
     return [(pt, z, c) for pt, c, _ in merged], nn
 
 
-def _surface_sites(atoms, metal_indices, max_layers=2):
+def _bridges_one_layer(atoms, indices, nn):
+    """Bridge sites: midpoints between nearest-neighbour pairs on one layer.
+
+    Used only when every hollow on a layer is too wide for a fragment's
+    bond length - see _surface_sites. Verified on Ni(100): 18 bridge
+    sites, clearance 1.245 A, against 9 hollow sites at 1.760 A, for a
+    H-Ni bond target of 1.550 A.
+    """
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+    pos = atoms.positions[indices]
+    z = float(np.mean(pos[:, 2]))
+
+    bridges = []
+    for i in range(len(indices)):
+        for j in range(len(indices)):
+            if i >= j:
+                continue
+            dist = _mic_xy(pos[i, :2], pos[j, :2], cell2, inv2)
+            if 0.8 * nn < dist < 1.2 * nn:
+                diff = (pos[j, :2] - pos[i, :2]) @ inv2
+                diff -= np.round(diff)
+                mid_xy = pos[i, :2] + (diff / 2.0) @ cell2
+                bridges.append((mid_xy, z, dist / 2.0))
+
+    merged = []
+    for pt, b_z, c in bridges:
+        for m_pt, _, _ in merged:
+            if _mic_xy(pt, m_pt, cell2, inv2) < 0.2 * nn:
+                break
+        else:
+            merged.append((pt, b_z, c))
+    return merged
+
+
+def _atops_one_layer(atoms, indices):
+    """Atop sites: directly over a surface atom, clearance zero.
+
+    The last resort when even bridge sites are too wide. Clearance zero
+    always yields a valid height, h = bond, so this can never itself
+    produce the invalid-sqrt bug that motivated this fallback chain.
+    """
+    return [(atoms.positions[i, :2], atoms.positions[i, 2], 0.0) for i in indices]
+
+
+def _surface_sites(atoms, metal_indices, max_layers=2, target_bond=None):
     """Hollow sites on every exposed terrace, each carrying its own height.
 
     A stepped slab has two terraces at different heights whose in-plane
@@ -343,6 +388,24 @@ def _surface_sites(atoms, metal_indices, max_layers=2):
         if previous is not None and len(previous) >= 0.8 * len(indices):
             break
         found, nn = _hollows_one_layer(atoms, indices)
+
+        # A hollow's clearance can exceed a fragment's own bond length: on
+        # Ni(100) every 4-fold hollow is 1.73-1.76 A from its nearest atom,
+        # wider than a H-Ni bond (1.55 A). sqrt(bond^2 - clearance^2) then
+        # has no real solution, and the placement code upstream silently
+        # floors it to 0.25 rather than raising, producing an actual
+        # metal-fragment distance of 2.4-2.5 A against a 1.55 A target. If
+        # every hollow on this layer is too wide, fall back to bridge
+        # sites, then atop, rather than returning a site with no valid
+        # height at all.
+        if (target_bond is not None and found
+                and all(c >= target_bond - 1e-4 for _, _, c in found)):
+            bridges = _bridges_one_layer(atoms, indices, nn)
+            if bridges and any(c < target_bond - 1e-4 for _, _, c in bridges):
+                found = bridges
+            else:
+                found = _atops_one_layer(atoms, indices)
+
         for xy, z, c in found:
             roofed = any(_mic_xy(xy, atoms.positions[i, :2], cell2, inv2)
                          < 0.85 * nn for i in above)
@@ -671,7 +734,26 @@ def build_dissociated_endpoint(separation: float = None,
     # land atop a surface atom and relax into that minimum: two N atoms on
     # Ru(0001) came out 2.07 eV ABOVE the intact molecule, which made the
     # NEB unconvergeable because the endpoint itself was wrong.
-    sites = _surface_sites(atoms, metal)
+    # _surface_sites is called once and shared between both fragments, but
+    # each fragment's own bond length is only known per-anchor, inside the
+    # loop below. On CH4/Ni(100) the CH3 fragment's anchor is carbon
+    # (bond ~2.00 A, satisfied by any hollow) while the lone H's anchor is
+    # hydrogen (bond ~1.55 A), and every hollow on Ni(100) has a clearance
+    # of ~1.73-1.76 A - wider than the H bond but narrower than the C bond.
+    # sqrt(bond^2 - clearance^2) is then a negative number under the root
+    # for the H fragment specifically, silently floored to 0.25 by the
+    # max() below rather than raising, which produced an actual
+    # metal-fragment distance of 2.4-2.5 A against a 1.55 A target.
+    #
+    # The tighter of the two fragments' bonds is what determines whether a
+    # hollow is usable at all, so that is what is passed to the site
+    # search, not either fragment's bond alone.
+    def _anchor_bond(group):
+        anc = max(group, key=lambda k: covalent_radii[atoms[k].number])
+        return height if height is not None else r_metal + covalent_radii[atoms[anc].number]
+
+    min_bond = min(_anchor_bond(left), _anchor_bond(right))
+    sites = _surface_sites(atoms, metal, target_bond=min_bond)
     used = []
     heights = []
 
