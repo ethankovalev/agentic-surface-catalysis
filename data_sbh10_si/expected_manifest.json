@@ -1,0 +1,278 @@
+{
+  "H2_Cu111": {
+    "metal_nn_A": [
+      2.519,
+      2.592
+    ],
+    "adsorbate_height_A": [
+      1.027,
+      1.027
+    ],
+    "breaking_bond": "H-H",
+    "r_b_A": 1.034,
+    "r_b_sbh17_srp": 1.03,
+    "r_b_delta": 0.004,
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "H2Cu24",
+    "cell_a_b_c_A": [
+      5.183,
+      5.183,
+      31.5
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow, hollow",
+    "problems": []
+  },
+  "H2_Cu100": {
+    "metal_nn_A": [
+      2.546,
+      2.592
+    ],
+    "adsorbate_height_A": [
+      0.991,
+      0.991
+    ],
+    "breaking_bond": "H-H",
+    "r_b_A": 1.192,
+    "r_b_sbh17_srp": 1.23,
+    "r_b_delta": -0.038,
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "H2Cu24",
+    "cell_a_b_c_A": [
+      5.183,
+      5.183,
+      29.263
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow, hollow",
+    "problems": []
+  },
+  "H2_Pt111": {
+    "metal_nn_A": [
+      2.8,
+      2.823
+    ],
+    "adsorbate_height_A": [
+      1.641,
+      1.643
+    ],
+    "breaking_bond": "H-H",
+    "r_b_A": 1.021,
+    "r_b_sbh17_srp": 0.769,
+    "r_b_delta": 0.252,
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "H2Pt24",
+    "cell_a_b_c_A": [
+      5.647,
+      5.647,
+      26.327
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "fcc, bridge",
+    "problems": []
+  },
+  "H2_Ru0001": {
+    "metal_nn_A": [
+      2.582,
+      2.66
+    ],
+    "adsorbate_height_A": [
+      1.57,
+      1.577
+    ],
+    "breaking_bond": "H-H",
+    "r_b_A": 1.132,
+    "r_b_sbh17_srp": 0.751,
+    "r_b_delta": 0.381,
+    "r_b_note": "differs from the SBH17 SRP-DFT geometry by +0.38 A - early vs late saddle, expected for a weakly activated system",
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "H2Ru24",
+    "cell_a_b_c_A": [
+      5.446,
+      5.446,
+      25.63
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow, hollow",
+    "problems": []
+  },
+  "N2_Ru0001_terrace": {
+    "metal_nn_A": [
+      2.62,
+      2.694
+    ],
+    "adsorbate_height_A": [
+      1.271,
+      1.272
+    ],
+    "breaking_bond": "N-N",
+    "r_b_A": 1.748,
+    "r_b_sbh17_srp": 1.741,
+    "r_b_delta": 0.007,
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "N2Ru24",
+    "cell_a_b_c_A": [
+      5.446,
+      5.446,
+      25.63
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow, hollow",
+    "problems": []
+  },
+  "N2_Ru0001_step": {
+    "metal_nn_A": [
+      2.551,
+      2.66
+    ],
+    "adsorbate_height_A": [
+      -0.048,
+      0.859
+    ],
+    "breaking_bond": "N-N",
+    "r_b_A": 1.799,
+    "atoms": 26,
+    "n_adsorbate": 2,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "N2Ru24",
+    "cell_a_b_c_A": [
+      5.446,
+      4.292,
+      34.262
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow, bridge",
+    "problems": []
+  },
+  "CH4_Ru0001": {
+    "metal_nn_A": [
+      2.573,
+      2.66
+    ],
+    "adsorbate_height_A": [
+      1.277,
+      2.88
+    ],
+    "breaking_bond": "C-H",
+    "r_b_A": 1.56,
+    "atoms": 29,
+    "n_adsorbate": 5,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "CH4Ru24",
+    "cell_a_b_c_A": [
+      5.446,
+      5.446,
+      26.663
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "fcc (CH3), fcc (H)",
+    "problems": []
+  },
+  "CH4_Ni100": {
+    "metal_nn_A": [
+      2.422,
+      2.499
+    ],
+    "adsorbate_height_A": [
+      0.871,
+      2.336
+    ],
+    "breaking_bond": "C-H",
+    "r_b_A": 1.909,
+    "atoms": 29,
+    "n_adsorbate": 5,
+    "n_metal": 24,
+    "n_frozen": 16,
+    "formula": "CH4Ni24",
+    "cell_a_b_c_A": [
+      4.998,
+      4.998,
+      24.468
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "hollow (CH3), hollow (H)",
+    "site_note": "SI footnote: the BEEF-vdW minimum-energy configuration actually has CH3 at the bridge site, not the hollow site listed in Table S1.",
+    "problems": []
+  },
+  "CH4_Ni111_terrace": {
+    "metal_nn_A": [
+      2.499,
+      2.499
+    ],
+    "adsorbate_height_A": [
+      0.978,
+      2.542
+    ],
+    "breaking_bond": "C-H",
+    "r_b_A": 1.68,
+    "r_b_sbh17_srp": 1.606,
+    "r_b_delta": 0.074,
+    "atoms": 29,
+    "n_adsorbate": 5,
+    "n_metal": 24,
+    "n_frozen": 24,
+    "formula": "CH4Ni24",
+    "cell_a_b_c_A": [
+      4.998,
+      4.998,
+      25.835
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "fcc (CH3), hollow (H)",
+    "problems": []
+  },
+  "CH4_Ni111_step": {
+    "metal_nn_A": [
+      2.499,
+      2.499
+    ],
+    "adsorbate_height_A": [
+      0.605,
+      2.261
+    ],
+    "breaking_bond": "C-H",
+    "r_b_A": 1.762,
+    "r_b_sbh17_srp": 1.632,
+    "r_b_delta": 0.13,
+    "atoms": 41,
+    "n_adsorbate": 5,
+    "n_metal": 36,
+    "n_frozen": 36,
+    "formula": "CH4Ni36",
+    "cell_a_b_c_A": [
+      6.121,
+      7.497,
+      22.5
+    ],
+    "provenance": "seeded",
+    "source": "SBH10 SI, Sharada/Bligaard/Luntz/Kroes/Norskov, BEEF-vdW transition state geometry",
+    "final_state_sites": "bridge (CH3), hollow (H)",
+    "problems": []
+  }
+}
