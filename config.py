@@ -42,6 +42,8 @@ MODELS = {
         "training_domain": "OC20 + OMat24 + OMol25 + ODAC23 + OMC25",
         "in_domain_for_surfaces": True,
         "noise_floor_eV": 0.3,
+        "model_resolution_eV": 0.05,
+        "reproducibility_eV": None,
         "gated": True,
     },
     "mace-mh-1": {
@@ -91,9 +93,47 @@ MODELS = {
     },
 }
 
+# noise_floor_eV conflated two different failures and so measured
+# neither. They are now separate fields.
+#
+#   model_resolution_eV  - the model's own energy resolution. Below this a
+#       number is not distinguishable from zero however tightly the
+#       optimiser converged. A property of the checkpoint.
+#
+#   reproducibility_eV   - the spread of the whole pipeline over repeat
+#       runs from perturbed starting geometries. A property of the harness,
+#       dominated by which basin the fragments land in, and in practice
+#       much larger than the model resolution. None means NOT YET MEASURED,
+#       and any claim about a difference smaller than it is unsupported.
+#
+# Both default to the legacy noise_floor_eV where a model has not been
+# measured, so nothing silently becomes more confident than it was.
+for _spec in MODELS.values():
+    _spec.setdefault("model_resolution_eV", _spec.get("noise_floor_eV"))
+    _spec.setdefault("reproducibility_eV", None)
+
 DEFAULT_MODEL = os.environ.get("MLIP_MODEL", "uma-s-1p1")
 
 # --- relaxation and NEB ----------------------------------------------
+
+# Every check the run must pass before it can finish. validation_summary
+# reports against this and exit_gate enforces it, so the two can never
+# disagree about what "validated" means. A check that exists but is not
+# listed here is optional, and an optional check is one the agent can skip
+# on the run where it would have failed.
+REQUIRED_CHECKS = (
+    "convergence",
+    "noise_floor",
+    "dispersion",
+    "dispersion_consistent",
+    "gas_reference",
+    "fragments",
+    "geometry",
+    "reaction_consistency",
+    "endpoints_distinct",
+    "path_resolved",
+    "zpe",
+)
 
 FMAX = 0.02              # eV/A for endpoint relaxations
 FMAX_NEB = 0.10          # eV/A for the band

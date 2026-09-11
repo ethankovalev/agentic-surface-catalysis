@@ -140,17 +140,27 @@ def exit_gate(state) -> str:
     if choice != "FINISH":
         return choice
 
-    if store.all_checks_passed():
-        print("\n[gate] all checks passed, finishing")
+    # all_checks_passed() is all(checks.values()), which is vacuously
+    # satisfiable: a run that executed three checks and passed them looks
+    # identical to one that executed eleven. The gate exists precisely to
+    # stop a model deciding it is done, so it has to require the full set,
+    # not merely the absence of failures among whatever happened to run.
+    checks = store.validation()
+    missing = [name for name in config.REQUIRED_CHECKS if name not in checks]
+    failed = [k for k, ok in checks.items() if not ok]
+
+    if not missing and not failed:
+        print("\n[gate] all required checks passed, finishing")
         return END
 
-    checks = store.validation()
     if not checks:
         print("\n[gate] supervisor said FINISH but nothing is validated "
               "-> Validation_Agent")
     else:
-        failed = [k for k, ok in checks.items() if not ok]
-        print(f"\n[gate] supervisor said FINISH but these failed: {failed}")
+        if missing:
+            print(f"\n[gate] supervisor said FINISH but these never ran: {missing}")
+        if failed:
+            print(f"\n[gate] supervisor said FINISH but these failed: {failed}")
     return "Validation_Agent"
 
 

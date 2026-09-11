@@ -471,14 +471,83 @@ def _step_edge_atoms(slab, reference_coordination: int) -> list:
 # to align and are left as the database supplies them.
 
 
+def _bonded_to(ads, anchor, scale=1.3):
+    """Indices bonded to `anchor` by the covalent-radius criterion."""
+    r_a = covalent_radii[ads[anchor].number]
+    out = []
+    for k in range(len(ads)):
+        if k == anchor:
+            continue
+        reach = scale * (r_a + covalent_radii[ads[k].number])
+        if np.linalg.norm(ads.positions[k] - ads.positions[anchor]) < reach:
+            out.append(k)
+    return out
+
+
+def breaking_bond(atoms, indices):
+    """Which bond dissociates: (anchor, terminal, length).
+
+    The anchor is the heaviest adsorbate atom - the fragment that stays
+    intact and binds to the surface. The terminal atom is the one bonded to
+    it that sits LOWEST, i.e. the one aimed at the metal.
+
+    Height, not bond length, is the discriminator. Methane's four C-H bonds
+    are identical to five decimal places, so ranking by length picks
+    whichever happens to come first in ASE's atom ordering, which is the
+    hydrogen pointing away from the surface. Breaking that one forces the
+    band through something very close to gas-phase homolysis and returns a
+    barrier several eV too high.
+
+    Raises rather than returning a guess: a molecule with nothing bonded to
+    its anchor is not a molecule this function understands, and picking an
+    arbitrary pair would hide that.
+    """
+    if len(indices) < 2:
+        raise ValueError("fewer than two adsorbate atoms; nothing to dissociate")
+
+    anchor = max(indices, key=lambda k: covalent_radii[atoms[k].number])
+    neighbours = [k for k in _bonded_to(atoms, anchor) if k in indices]
+    if not neighbours:
+        raise ValueError(
+            f"nothing is bonded to the anchor atom ({atoms[anchor].symbol}, "
+            f"index {anchor}). The molecule is already dissociated, or the "
+            "geometry is distorted past recognition.")
+
+    terminal = min(neighbours, key=lambda k: atoms.positions[k, 2])
+    length = float(np.linalg.norm(
+        atoms.positions[terminal] - atoms.positions[anchor]))
+    return anchor, terminal, length
+
+
 def _orient_for_dissociation(ads):
-    """Lay a diatomic's bond parallel to the surface. Others are unchanged."""
-    if len(ads) != 2:
+    """Point the bond that will break at the surface.
+
+    Diatomic: the bond goes parallel to the surface, which is the geometry
+    both atoms need to reach their own site.
+
+    Polyatomic AB_n: one A-B bond points straight down. For methane this is
+    the difference between a barrier of 0.8 eV and one of 7 eV. ASE's g2
+    geometry puts CH4 edge-down, two hydrogens toward the metal and two
+    away, and nothing downstream rotates it, so the bond that breaks is
+    chosen from a molecule that was never aimed at the surface.
+    """
+    if len(ads) < 2:
         return ads
-    axis = ads.positions[1] - ads.positions[0]
+
+    if len(ads) == 2:
+        axis = ads.positions[1] - ads.positions[0]
+        if np.linalg.norm(axis) < 1e-6:
+            return ads
+        ads.rotate(axis, (1.0, 0.0, 0.0), center="COM")
+        return ads
+
+    anchor, terminal, _ = breaking_bond(ads, list(range(len(ads))))
+    axis = ads.positions[terminal] - ads.positions[anchor]
     if np.linalg.norm(axis) < 1e-6:
-        return ads
-    ads.rotate(axis, (1.0, 0.0, 0.0), center="COM")
+        raise ValueError(
+            f"{ads.get_chemical_formula()}: the bond chosen to break has zero "
+            "length. The input geometry is degenerate.")
+    ads.rotate(axis, (0.0, 0.0, -1.0), center=ads.positions[anchor])
     return ads
 
 
@@ -686,26 +755,38 @@ def build_dissociated_endpoint(separation: float = None,
     else:
         use_site_search = False
 
-    # Two hydrogens on opposite sides of a carbon sit further apart than
-    # any C-H bond, so the old "longest internal distance" rule split
-    # CH4 into CH2 + H2 instead of CH3 + H.
-    best, pair = -1.0, None
-    for i in ads:
-        for j in ads:
-            if i >= j:
-                continue
-            d = atoms.get_distance(i, j, mic=True)
-            r_i = covalent_radii[atoms[i].number]
-            r_j = covalent_radii[atoms[j].number]
-            bonded = d < 1.3 * (r_i + r_j)
-            if bonded and d > best:
-                best, pair = d, (i, j)
+    # Which bond breaks. Two hydrogens on opposite sides of a carbon sit
+    # further apart than any C-H bond, so a "longest internal distance"
+    # rule splits CH4 into CH2 + H2. Ranking bonded pairs by length instead
+    # fixes that but replaces it with a worse failure: methane's four C-H
+    # bonds are degenerate, so the strict comparison keeps whichever comes
+    # first in ASE's ordering, which is the hydrogen pointing AWAY from the
+    # metal. Breaking that one makes the band do gas-phase homolysis and
+    # returned 7 eV against a 0.8 eV reference on CH4/Ru(0001).
+    #
+    # breaking_bond() ranks by the terminal atom's height instead, and
+    # _orient_for_dissociation has already rotated one bond to point at the
+    # surface, so the two agree by construction.
+    try:
+        a, b, best = breaking_bond(atoms, ads)
+    except ValueError as exc:
+        return f"FAILED: {exc}"
 
-    if pair is None:
-        return ("FAILED: no bonded pair found in the adsorbate. The molecule "
-                "may already be dissociated, or the geometry is distorted.")
-
-    a, b = pair
+    # The terminal atom must actually be on the surface side. If it is not,
+    # the adsorbate was rotated after placement, or placed by something that
+    # bypassed _orient_for_dissociation, and the band is about to be asked
+    # for homolysis again. Crash rather than produce a number.
+    anchor_z = atoms.positions[a, 2]
+    terminal_z = atoms.positions[b, 2]
+    if len(ads) > 2 and terminal_z > anchor_z + 0.1:
+        return (f"FAILED: the bond selected to break ({atoms[a].symbol}-"
+                f"{atoms[b].symbol}) points away from the surface - the "
+                f"{atoms[b].symbol} sits {terminal_z - anchor_z:.2f} A ABOVE "
+                f"the {atoms[a].symbol} it is bonded to. Breaking it forces "
+                "the band through gas-phase homolysis and returns a barrier "
+                "several eV too high. Rebuild the initial state: "
+                "place_adsorbate orients the breaking bond downward, so this "
+                "means the geometry was modified after placement.")
 
     # `best` is the intact bond length, only known once the bonded pair has
     # been found, so the recombination-safe margin is computed here rather
@@ -1965,10 +2046,7 @@ def validation_summary() -> str:
 
     # name the checks that were never run, rather than
     # summarising a partial set as though it were complete.
-    expected = {"convergence", "noise_floor", "dispersion",
-                "dispersion_consistent", "gas_reference", "fragments",
-                "geometry", "reaction_consistency", "endpoints_distinct",
-                "path_resolved"}
+    expected = set(config.REQUIRED_CHECKS)
     missing = sorted(expected - set(checks))
 
     lines.append("")
@@ -1996,6 +2074,10 @@ def _closest_contact(atoms, n_metal: int) -> float:
     return best
 
 
+# Imported here rather than at the top of the file to keep the dependency
+# one-way: zpe reaches into calculators and store, never back into tools.
+from src.zpe import check_zpe_applied, compute_zpe_correction  # noqa: E402
+
 STRUCTURE_TOOLS = [build_slab, build_stepped_slab, place_adsorbate, build_dissociated_endpoint]
 SIMULATION_TOOLS = [
     relax_structure,
@@ -2005,6 +2087,7 @@ SIMULATION_TOOLS = [
     check_saddle_connects,
     build_gas_reference,
     compute_gas_referenced_barrier,
+    compute_zpe_correction,
     read_results,
 ]
 VALIDATION_TOOLS = [
@@ -2018,5 +2101,6 @@ VALIDATION_TOOLS = [
     check_reaction_consistency,
     check_endpoints_distinct,
     check_path_resolved,
+    check_zpe_applied,
     validation_summary,
 ]

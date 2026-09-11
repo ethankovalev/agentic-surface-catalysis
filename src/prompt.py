@@ -39,6 +39,14 @@ Your job, in order:
   4. Call check_endpoints_are_minima
   5. Run the nudged elastic band between initial and final
   6. Call compute_gas_referenced_barrier
+  7. Call compute_zpe_correction
+
+Step 7 is not optional and the barrier is not final without it. The band
+gives a classical electronic barrier. The quantity this benchmark is scored
+against is the zero-point corrected one, which is a different number by
+0.03 to 0.15 eV on every reaction of this kind, always in the same
+direction. compute_zpe_correction needs a confirmed first-order saddle, so
+if refine_saddle has not run and succeeded, run it before step 7.
 
 Step 4 comes before the band, not after. An optimiser stops when forces are
 small, which happens at a minimum but also on a shoulder or at a saddle. A
