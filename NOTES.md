@@ -135,3 +135,16 @@ between two lower-symmetry saddles, rather than the true minimum-energy
 path DFT finds. Deferred: retry with a small (~0.05 A) symmetry-breaking
 displacement off the axis before refine_saddle, to test whether this
 resolves to a genuine nearby first-order saddle.
+
+## Cell sensitivity test: H2_Cu111, D3-off (2026-09-12)
+Scripted (agent-free) pipeline run at 3x3x4 (1/9 ML) and 2x2x6 (1/4 ML),
+identical model/dispersion/thresholds otherwise. Both confirm genuine
+first-order saddles with full mode-following connectivity.
+  3x3x4: 0.744 eV (classical 0.764, dZPE -0.019), vs 0.63 ref: +0.114
+  2x2x6: 0.711 eV (classical 0.737, dZPE -0.027), vs 0.63 ref: +0.081
+Gap: 0.034 eV, under the 0.05 eV threshold. Cell size is NOT the source
+of the seeded-vs-autonomous discrepancy on this reaction. Decision:
+autonomous pipeline stays at 3x3x4; no migration. The larger remaining
+gap between the seeded track (0.657 eV, published BEEF-vdW geometry) and
+this scripted 3x3x4 result (0.744 eV) is attributable to geometry
+source/relaxation freedom, not cell size.
