@@ -148,3 +148,29 @@ autonomous pipeline stays at 3x3x4; no migration. The larger remaining
 gap between the seeded track (0.657 eV, published BEEF-vdW geometry) and
 this scripted 3x3x4 result (0.744 eV) is attributable to geometry
 source/relaxation freedom, not cell size.
+
+## Seeded track complete, all 10 reactions, both D3 settings (2026-09-12)
+barrier_at_reference_geometry_eV needs no search/saddle/ZPE - the
+headline number. D3-off MAE 0.166 eV, D3-on MAE 0.445 eV, D3-off wins
+9/10 reactions. For reference BEEF-vdW (best DFT functional in the
+original paper) reports MAE ~0.12-0.14 eV - UMA D3-off is within
+striking distance of the reference method's own accuracy, at zero
+fitting cost, with zero missing data points.
+
+Full refinement (saddle + ZPE) succeeded on 6/10: H2_Cu111, H2_Cu100
+(D3-on only), CH4_Ni111_terrace, N2_Ru0001_terrace, N2_Ru0001_step.
+Four refinement non-successes, all correctly caught by the exit gate,
+not pipeline bugs:
+  - H2_Pt111, H2_Ru0001: both near-barrierless (ref ~0 eV) - connectivity
+    test's fixed 60-step relaxation can stall on the flat PES near a
+    near-zero barrier. Algorithmic limit of the connectivity check for
+    this specific regime, not a defect in UMA or the saddle itself.
+  - CH4_Ni100: saddle relaxed to bond length 1.124 A, near-intact
+    (normal C-H 1.07 A) - collapsed back toward reactant, correctly
+    rejected.
+  - CH4_Ni111_step: saddle relaxed to 2.268 A, sits in the product
+    basin (displacement further apart barely moves it) - correctly
+    rejected.
+
+Full table: results/seeded/SEEDED_SUMMARY.md
+Details: results/seeded/seeded_uma-s-1p1_d3{on,off}.json
