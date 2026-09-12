@@ -67,6 +67,32 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def _json_default(obj):
+    """Coerce numpy scalars that json.dumps cannot handle natively.
+
+    numpy.float64 subclasses float and serializes fine on its own; this
+    exists for the ones that do not - numpy.bool_, numpy.integer, and bare
+    numpy arrays if one ever ends up in a result dict by accident. A GPU
+    run in this script costs real minutes; the very last line should not
+    be able to throw that work away over a type json.dumps was never told
+    about. This is a safety net, not a substitute for casting explicitly
+    at the source - see the bool() casts in connectivity_by_bond_displacement
+    for the actual fix to the bug that made this necessary in the first
+    place.
+    """
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+import numpy as np
 from ase.build import molecule as build_molecule
 from ase.constraints import FixAtoms
 from ase.data import covalent_radii
@@ -250,9 +276,17 @@ def connectivity_by_bond_displacement(name, model_key, with_d3, work):
     # Compressed should fall back toward a normal bond, stretched should
     # run away from it. Thresholds are relative to the intact bond length
     # so they mean the same thing for H-H, N-N and C-H.
-    recombined = results["compressed"] < intact * 1.35
-    dissociated = results["stretched"] > max(r_saddle, intact) * 1.25
-    connects = recombined and dissociated
+    # bool(), explicitly. numpy overrides comparison operators to return
+    # numpy.bool_ rather than Python's bool, even when one side is a plain
+    # float. numpy.float64 happens to survive json.dumps because it
+    # subclasses float; numpy.bool_ does NOT subclass bool, and json has no
+    # default handler for it. Without this cast, a fully successful run -
+    # both relaxations converged, saddle confirmed - can crash at the very
+    # last line writing its own result to disk, after all the GPU work is
+    # already spent.
+    recombined = bool(results["compressed"] < intact * 1.35)
+    dissociated = bool(results["stretched"] > max(r_saddle, intact) * 1.25)
+    connects = bool(recombined and dissociated)
 
     record = {
         "method": "bond_displacement",
@@ -458,7 +492,7 @@ def main():
                 "barrier_eV": None,
                 "status": f"crashed: {type(exc).__name__}: {exc}",
             }
-        out.write_text(json.dumps(results, indent=2))
+        out.write_text(json.dumps(results, indent=2, default=_json_default))
         r = results[name]
         print(f"-> {r.get('status')}  barrier={r.get('barrier_eV')}  "
               f"dZPE={r.get('dzpe_eV')}")
