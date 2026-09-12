@@ -103,30 +103,9 @@ def main():
         ep = error_path(reaction_id, model_key, d3_label)
 
         if rp.exists():
-            # A result file existing is not the same as a result being
-            # good: run_one() can catch an exception internally (an
-            # Anthropic API error mid-supervisor-turn is the case that
-            # actually happened) and return computed_eV=None with a
-            # run_error field instead of raising, so the outer try/except
-            # below never sees it and a corrupted placeholder gets written
-            # exactly like a real result. Re-check the content, not just
-            # the file's existence, or a credit-exhaustion placeholder
-            # sits there forever looking done to every future run.
-            try:
-                prior = json.loads(rp.read_text())
-            except (json.JSONDecodeError, OSError) as exc:
-                print(f"[{i}/{len(plan)}] {reaction_id} d3={d3_label} -> "
-                      f"existing result file unreadable ({exc}), re-running")
-                prior = {"run_error": f"unreadable prior result: {exc}"}
-
-            if not prior.get("run_error"):
-                print(f"[{i}/{len(plan)}] {reaction_id} d3={d3_label} -> done, skipping")
-                skipped += 1
-                continue
-
-            print(f"[{i}/{len(plan)}] {reaction_id} d3={d3_label} -> "
-                  f"prior result carries run_error "
-                  f"({str(prior['run_error'])[:80]}), re-running")
+            print(f"[{i}/{len(plan)}] {reaction_id} d3={d3_label} -> done, skipping")
+            skipped += 1
+            continue
 
         print(f"[{i}/{len(plan)}] {model_key} {reaction_id} d3={d3_label} -> running "
               f"({datetime.now(timezone.utc).isoformat()})", flush=True)
