@@ -62,6 +62,7 @@ connects them. Reporting it under the stronger name would overstate it.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -81,6 +82,21 @@ from src.tools import refine_saddle
 from src.zpe import compute_zpe_correction
 
 ADSORBATE_ELEMENTS = {"H", "C", "N", "O"}
+
+# Same pattern as scripts/run_grid.py's RESULTS_DIR: an env var, not a
+# config.py attribute (config.py has no such attribute - it exposes
+# WORK_DIR and OUTPUT_DIR only). Written to the network volume, not the
+# repo, for the same reason as the grid track: the repo's local disk is
+# wiped when the pod goes away.
+#
+# Deliberately a DIFFERENT directory from the grid track's default
+# (results/seeded, not results/grid). These are two different questions
+# with two different answers - see the module docstring - and giving them
+# the same directory would invite exactly the accidental blending this
+# script exists to prevent.
+SEEDED_RESULTS_DIR = Path(os.environ.get(
+    "SEEDED_RESULTS_DIR",
+    "/workspace/agentic-surface-catalysis/results/seeded"))
 
 # Height of the molecule above the top metal layer in the asymptotic
 # state. SBH10 used at least 10 A of vacuum; 8 A of separation puts the
@@ -398,7 +414,7 @@ def main():
         raise SystemExit(
             f"no .traj files in {args.seeds}/. Run build_seeds.py first.")
 
-    out = args.out or (Path(config.GRID_RESULTS_DIR)
+    out = args.out or (SEEDED_RESULTS_DIR
                        / f"seeded_{model_key}_d3{args.d3}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
 
