@@ -302,6 +302,18 @@ def run_one(name, seed_file, model_key, with_d3, work):
     asym, e_asym, species = build_asymptotic(
         seed, ads, name, model_key, with_d3, work)
 
+    # Single point at the published geometry, before any relaxation. This
+    # is the cleanest PES-accuracy number in the whole track: the MLIP's
+    # energy at the reference functional's own transition state, with
+    # nothing moved. Refinement afterwards lets the MLIP relax to ITS
+    # saddle, which is a different and also interesting quantity, but this
+    # one isolates "is the surface right here" from "does the surface put
+    # the saddle in the same place".
+    probe = seed.copy()
+    probe.calc = new_calculator(model_key, with_d3=with_d3)
+    e_seed = float(probe.get_potential_energy())
+    barrier_at_reference = e_seed - e_asym
+
     # refine_saddle measures its barrier from initial_relaxed.energy_eV.
     # Setting that to the asymptotic energy makes the refined barrier the
     # gas-referenced barrier directly, in SBH10's convention, with no
@@ -315,11 +327,17 @@ def run_one(name, seed_file, model_key, with_d3, work):
     })
     store.put("gasref_relaxed", {
         "energy_eV": e_asym, "converged": True, "species": species})
+    # barrier_eV must be a real number, not None: refine_saddle's success
+    # message formats it as "{...:.3f} eV from the NEB peak", and None
+    # crashes that. The honest value is the barrier at the unrelaxed
+    # published geometry, which makes refine_saddle's reported shift
+    # exactly the relaxation the MLIP applied to the reference saddle.
     store.put("neb", {
-        "barrier_eV": None,
+        "barrier_eV": barrier_at_reference,
         "with_d3": bool(with_d3),
         "skipped": True,
-        "reason": "seeded track: the transition state is given, not searched for",
+        "reason": "seeded track: the transition state is given, not searched "
+                  "for; 'NEB peak' here means the published geometry",
     })
 
     saddle_msg = refine_saddle.invoke({
@@ -334,11 +352,12 @@ def run_one(name, seed_file, model_key, with_d3, work):
         "molecule": species,
         "seed_r_b_A": round(r_b, 3),
         "asymptotic_energy_eV": e_asym,
+        "barrier_at_reference_geometry_eV": barrier_at_reference,
         "saddle_message": saddle_msg,
         "saddle_converged": saddle.get("converged"),
         "first_order_saddle": saddle.get("first_order_saddle"),
         "imaginary_modes_meV": saddle.get("imaginary_modes_meV"),
-        "shift_from_seed_eV": saddle.get("shift_from_neb_peak_eV"),
+        "relaxation_from_reference_eV": saddle.get("shift_from_neb_peak_eV"),
     }
 
     if not (saddle.get("converged") and saddle.get("first_order_saddle")):
@@ -445,13 +464,14 @@ def main():
               f"dZPE={r.get('dzpe_eV')}")
 
     print(f"\n{'=' * 70}")
-    print(f"{'reaction':22s} {'barrier':>9s} {'classical':>10s} "
+    print(f"{'reaction':22s} {'barrier':>9s} {'classical':>10s} {'at ref geo':>11s} "
           f"{'dZPE':>7s} {'r_b drift':>10s}  status")
     for name, r in sorted(results.items()):
         def fmt(key, w, p=3):
             v = r.get(key)
             return f"{v:{w}.{p}f}" if isinstance(v, (int, float)) else f"{'--':>{w}}"
         print(f"{name:22s} {fmt('barrier_eV', 9)} {fmt('barrier_classical_eV', 10)} "
+              f"{fmt('barrier_at_reference_geometry_eV', 11)} "
               f"{fmt('dzpe_eV', 7)} {fmt('r_b_drift_A', 10)}  {r.get('status')}")
     print(f"\nwritten to {out}")
     print("provenance=seeded on every entry: these are PES-accuracy results "
