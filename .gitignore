@@ -17,3 +17,4 @@ data
 *.pre_day1
 *.pre_check_fix
 work_seeds/
+*.pre_resume_fix
