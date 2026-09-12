@@ -122,3 +122,16 @@ base UMA functional has its own smaller positive bias. True answer likely
 sits between the two settings. Worth repeating on Cu100 and Pt111 once
 those validate cleanly, to see if the pattern (undershoot on, overshoot
 off) holds across surfaces.
+
+## H2_Cu100, seeded, D3-off: second-order stationary point (2026-09-12)
+Sella converges cleanly (True) to a point with 2 imaginary modes: 128 meV
+(dominant, likely the true reaction coordinate) and 23 meV (stable, well
+above the 5 meV noise threshold - not numerical noise like the
+CH4_Ru0001 case). Barrier at the UNMOVED published geometry is 0.760 eV
+against a 0.74 eV reference (+0.02 eV) - excellent PES accuracy,
+independent of refinement outcome. Hypothesis: Cu(100)'s hollow-hollow
+TS sits on a 4-fold symmetry axis that UMA's PES treats as a ridge
+between two lower-symmetry saddles, rather than the true minimum-energy
+path DFT finds. Deferred: retry with a small (~0.05 A) symmetry-breaking
+displacement off the axis before refine_saddle, to test whether this
+resolves to a genuine nearby first-order saddle.
