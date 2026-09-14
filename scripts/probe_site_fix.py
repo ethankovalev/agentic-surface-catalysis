@@ -204,16 +204,48 @@ def main():
                   "budget - do not proceed to Stage 2 on an unclear result.")
             return 1
 
-        fcc_wins = fcc_e < hcp_e
-        print(f"\nfcc {'IS' if fcc_wins else 'is NOT'} lower "
-              f"(fcc={fcc_e:.4f} eV, hcp={hcp_e:.4f} eV, "
-              f"delta={fcc_e - hcp_e:+.4f} eV)")
+        # A strict "<" comparison called a 1e-6 eV difference a real win on
+        # 2026-09-14 - roughly 1 microelectronvolt, ~40,000x smaller than
+        # chemical accuracy (0.043 eV) and below BFGS's own fmax=0.02 eV/A
+        # convergence threshold. That is floating-point noise between two
+        # optimizer paths converging to the SAME point, not a real energy
+        # difference - confirmed the same run by identical relaxed
+        # geometries (compare_site_geometries.py, zero lateral delta).
+        # DEGENERATE_TOL is set at 1 meV: comfortably above optimizer
+        # noise, comfortably below any energy difference that could matter
+        # physically.
+        DEGENERATE_TOL = 1e-3
+        delta = fcc_e - hcp_e
+        degenerate = abs(delta) < DEGENERATE_TOL
+        fcc_wins = (not degenerate) and delta < 0
+
+        if degenerate:
+            print(f"\nfcc and hcp are ENERGETICALLY DEGENERATE on this PES "
+                  f"(delta={delta:+.6f} eV, under the {DEGENERATE_TOL:.0e} eV "
+                  f"noise floor). This is not a real difference - run "
+                  f"compare_site_geometries.py to check whether both "
+                  f"relaxations reached the same basin (expected) before "
+                  f"drawing any conclusion from this number.")
+        else:
+            print(f"\nfcc {'IS' if fcc_wins else 'is NOT'} lower "
+                  f"(fcc={fcc_e:.4f} eV, hcp={hcp_e:.4f} eV, "
+                  f"delta={delta:+.4f} eV)")
 
         print(f"\n{'=' * 60}\nCOST CHECKPOINT\n{'=' * 60}")
         print("Stage 1 is done. Stage 2 (NEB + saddle refinement + two")
         print("Hessians) is the expensive part of this script - most of")
         print("today's GPU budget, if you have limited funds, goes here.")
         print("Check your RunPod balance now before continuing.\n")
+
+        if degenerate:
+            print("\nDegenerate result: not proceeding to Stage 2")
+            print("automatically. The site-search hypothesis is not")
+            print("supported by a difference this small - it is noise, not")
+            print("a finding. Confirm with compare_site_geometries.py, log")
+            print("it as a negative result, and decide separately whether")
+            print("Stage 2 is worth running on other grounds.")
+            print("\nRerun with --stage2-only to proceed anyway.")
+            return 0
 
         if not fcc_wins:
             print("fcc did NOT come out lower on this model's own PES.")
@@ -225,9 +257,12 @@ def main():
             print("\nRerun with --stage2-only to proceed anyway.")
             return 0
 
-        print("fcc IS lower. Proceeding to Stage 2 automatically.")
-        print("(Ctrl+C now if you want to stop and check budget first -")
-        print(" nothing expensive has run yet.)\n")
+        print("fcc IS lower, by a physically meaningful margin.")
+        print(f"STOPPING HERE, not proceeding automatically. If you want")
+        print(f"Stage 2, rerun with --stage2-only - that is now a deliberate")
+        print(f"choice you make, not something that happens if you are not")
+        print(f"fast enough to Ctrl+C.")
+        return 0
 
     print(f"\n{'=' * 60}\nSTAGE 2: full chain on the FCC endpoint\n{'=' * 60}")
     result = stage2_full_chain(model_key, with_d3, args.n_images,
