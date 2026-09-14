@@ -76,7 +76,15 @@ def stage1_compare_sites(model_key, with_d3):
     structures. Stage 2 then continues from them instead of rebuilding
     and re-relaxing, which on a tight GPU budget is two whole relaxations
     saved for free.
+
+    Each relaxed final.traj is ALSO copied to final_<kind>.traj before the
+    next iteration overwrites it. Without this, two relaxations that
+    happen to converge to the same energy to many decimal places cannot
+    be told apart from a caching bug that never actually ran a second,
+    independent relaxation - the only file left on disk would be
+    whichever ran last, with nothing to compare it against.
     """
+    import shutil
     results = {}
     for kind in ("hcp", "fcc"):
         print(f"\n{'=' * 60}\n  candidate site: {kind}\n{'=' * 60}")
@@ -98,6 +106,12 @@ def stage1_compare_sites(model_key, with_d3):
             "converged": final.get("converged"),
             "energy_eV": final.get("energy_eV"),
         }
+
+        src = Path(config.WORK_DIR) / "final.traj"
+        dst = Path(config.WORK_DIR) / f"final_{kind}.traj"
+        if src.exists():
+            shutil.copy(src, dst)
+            print(f"  saved a copy for later comparison: {dst.name}")
 
     return results
 
