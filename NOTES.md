@@ -190,3 +190,24 @@ relaxations reached identical anchor positions (zero lateral delta on
 both C and H). The negative result above is confirmed, not just
 hedged: fcc and hcp are not separate basins for this fragment on this
 PES.
+
+## CH4_Ni111_step autonomous D3-on: computed but not validated (2026-09-14)
+Agent report claimed a resolved 0.488 eV (ZPE-corrected) barrier, but
+exit_gate correctly refused - check_saddle_connects returned Delta=0.02 A
+between displaced-and-relaxed endpoints, too small to distinguish
+forward from backward. This cascades: check_convergence and
+check_path_resolved both defer to a saddle only when it is BOTH
+first-order AND connected, so both stayed failed despite a genuine
+1-imaginary-mode (60 meV) saddle being found on the second refine_saddle
+attempt. Classical barrier 0.675 eV, dZPE -0.187 eV, reaction energy
++0.484 eV (barrier > reaction energy, physically consistent).
+
+Candidate cause: check_saddle_connects's displacement magnitude may be
+too small for this specific C-H bond / step-edge geometry - both push
+directions relax back close to the saddle within the check's step
+budget rather than reaching clearly separated basins. Not fixed today;
+candidate follow-up, not urgent.
+
+Stored as computed_eV=0.4877848102524832, validated=False. Same
+treatment as CH4_Ru0001: report the diagnosed cause, do not treat the
+number as trustworthy.
