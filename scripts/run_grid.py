@@ -59,6 +59,14 @@ def main():
     parser.add_argument("--models", default=config.DEFAULT_MODEL)
     parser.add_argument("--d3", choices=["on", "off", "both"], default="on")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--only", default=None,
+                        help="comma-separated reaction ids to restrict the "
+                             "plan to, e.g. H2_Cu100,H2_Pt111")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="stop after this many reactions have actually "
+                             "RUN. Skipped (already-complete) reactions do "
+                             "not count, so --limit 2 on a mostly-finished "
+                             "sweep attempts exactly two real reactions.")
     args = parser.parse_args()
 
     models = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -68,9 +76,19 @@ def main():
     if unknown:
         raise SystemExit(f"Unknown model key(s): {unknown}. Known: {list(config.MODELS)}")
 
+    only = None
+    if args.only:
+        only = [r.strip() for r in args.only.split(",") if r.strip()]
+        unknown_r = [r for r in only if r not in SBH10]
+        if unknown_r:
+            raise SystemExit(
+                f"Unknown reaction id(s): {unknown_r}. Known: {list(SBH10)}")
+
     plan = []
     for model_key in models:
         for reaction_id, spec in SBH10.items():
+            if only is not None and reaction_id not in only:
+                continue
             for d3_label in d3_labels:
                 plan.append((model_key, reaction_id, spec, d3_label))
 
@@ -99,6 +117,14 @@ def main():
     completed = skipped = failed = 0
 
     for i, (model_key, reaction_id, spec, d3_label) in enumerate(plan, 1):
+        # Counts reactions that actually ran, not plan entries seen, so the
+        # limit means the same thing on a fresh sweep and on a resumed one.
+        if args.limit is not None and completed + failed >= args.limit:
+            print(f"\n[limit] {args.limit} reaction(s) have run; stopping "
+                  f"before {reaction_id} d3={d3_label}. "
+                  f"Re-run to continue where this left off.")
+            break
+
         rp = result_path(reaction_id, model_key, d3_label)
         ep = error_path(reaction_id, model_key, d3_label)
 

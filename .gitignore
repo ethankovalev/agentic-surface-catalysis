@@ -18,3 +18,4 @@ data
 *.pre_check_fix
 work_seeds/
 *.pre_resume_fix
+*.pre_budget_fix

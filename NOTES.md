@@ -174,3 +174,19 @@ not pipeline bugs:
 
 Full table: results/seeded/SEEDED_SUMMARY.md
 Details: results/seeded/seeded_uma-s-1p1_d3{on,off}.json
+
+## fcc/hcp site probe on CH4_Ru0001: negative result (2026-09-14)
+Two independent runs both relax hcp and fcc starting endpoints to the
+same energy to within ~1 ueV - noise level, not a real difference.
+compare_site_geometries.py confirms/refutes whether they reach the same
+basin. Conclusion: the fcc/hcp site mismatch found yesterday (code
+placed both fragments on hcp against SBH10's FCC,FCC) is real and now
+fixed, but is likely NOT the cause of CH4_Ru0001's endpoint instability
+- UMA's own PES does not meaningfully distinguish these two sites for
+this fragment. The instability's real cause remains open.
+
+Update: compare_site_geometries.py confirms SAME GEOMETRY - both
+relaxations reached identical anchor positions (zero lateral delta on
+both C and H). The negative result above is confirmed, not just
+hedged: fcc and hcp are not separate basins for this fragment on this
+PES.
