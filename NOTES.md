@@ -234,3 +234,27 @@ MACE also confirmed H2_Cu111 (0.616 vs 0.630, -0.014) and
 N2_Ru0001_step (0.238 vs 0.400, -0.162). Four of ten fully validated;
 remainder show the same pattern of failure modes as UMA (saddle found
 but ZPE-gated, or no confirmed saddle) - not yet individually diagnosed.
+
+## MACE-mpa-0 seeded track, D3-off: rules out precision as Orb's cause (2026-09-15)
+mace-mpa-0 uses the same MACE backend as mace-mh-1, which _build_mace
+forces to float64 unconditionally regardless of checkpoint - no
+precision confound. Still 0/10 confirmed first-order saddles,
+identical to Orb's float32 result, and WORSE in magnitude: MAE 0.769 eV
+vs Orb's 0.473 eV. Worst case CH4_Ni111_step at ref geometry: -1.432 eV
+against a 0.800 eV reference, a physically nonsensical energy over
+2 eV off.
+
+This controls for precision cleanly: same numerics as mace-mh-1
+(in-domain, MAE 0.174, 4/10 confirmed), different training domain
+(bulk crystals only), and the result is catastrophic rather than
+merely worse. Confirms the domain-mismatch finding is real, not a
+float32 artifact from Orb specifically.
+
+Four-model MAE at reference geometry:
+  UMA (in-domain):        0.166
+  MACE-mh-1 (in-domain):  0.174
+  Orb (out-of-domain):    0.473
+  MACE-mpa-0 (out-of-domain): 0.769
+
+Saddle confirmation: in-domain models 4-6/10, out-of-domain models
+0/10 for both, regardless of backend or precision.
