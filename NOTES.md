@@ -211,3 +211,26 @@ candidate follow-up, not urgent.
 Stored as computed_eV=0.4877848102524832, validated=False. Same
 treatment as CH4_Ru0001: report the diagnosed cause, do not treat the
 number as trustworthy.
+
+## MACE-mh-1 seeded track, D3-off, first cross-model result (2026-09-15)
+MAE at reference geometry (10/10, no search needed): MACE 0.174 eV vs
+UMA 0.166 eV - nearly tied, both close to BEEF-vdW's 0.14 eV. Supports
+the D3-overcorrection finding generalizing beyond UMA specifically.
+
+STANDOUT: CH4_Ru0001 - unresolved in UMA autonomous (endpoint
+instability) AND UMA seeded (persistent 8-11 meV second imaginary mode,
+multiple attempts) AND ruled out fcc/hcp as the cause yesterday -
+resolves CLEANLY on MACE: confirmed first-order saddle, confirmed
+connectivity, barrier 0.870 eV vs 0.800 eV reference (+0.070 eV). This
+reaction is hard for UMA's PES specifically, not intrinsically hard.
+
+Shared weakness: N2_Ru0001_terrace is the worst reaction for BOTH
+models (UMA -0.501, MACE -0.727 at ref geo) - also the highest-barrier
+reaction and the one with the widest experimental spread (1.3-2.27 eV)
+in the literature, so this may reflect reference uncertainty as much as
+model error.
+
+MACE also confirmed H2_Cu111 (0.616 vs 0.630, -0.014) and
+N2_Ru0001_step (0.238 vs 0.400, -0.162). Four of ten fully validated;
+remainder show the same pattern of failure modes as UMA (saddle found
+but ZPE-gated, or no confirmed saddle) - not yet individually diagnosed.
