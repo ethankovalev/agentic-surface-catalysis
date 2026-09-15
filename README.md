@@ -25,8 +25,9 @@ a configuration the model was probably never trained on.
 rather than to more DFT, and does adding dispersion help or hurt?**
 
 That question is not settled. The current best answer from this repository, now
-measured on two independent models, is that **dispersion hurts, substantially
-and consistently.** See [Current status](#current-status).
+measured across four models and both dispersion settings, is that **dispersion
+hurts every model tested, and training domain matters more than architecture.**
+See [Current status](#current-status).
 
 ---
 
@@ -134,7 +135,10 @@ periodic slab is out of domain **by construction**. Including those models is
 the point, but a table that does not say so reads as a fair fight when it is not.
 
 The interesting result is not a leaderboard. It is *which training domain
-transfers to surface barriers, and how much the mismatch costs.*
+transfers to surface barriers, and how much the mismatch costs.* Four of the
+five are now measured on the seeded track. The answer is a 3.7x gap in mean
+absolute error and a categorical difference in whether a transition state can be
+confirmed at all.
 
 **On UMA S 1.2.** The 1.2 checkpoint is incompatible with every installable
 `fairchem-core` version tested (2.14.0, 2.13.0, 2.5.0, 1.10.0): the saved
@@ -162,9 +166,16 @@ Three mechanisms are handled separately:
 A useful invariant falls out of the additive mechanism: two models that share a
 `d3_xc` value must produce an identical D3 contribution on identical geometry,
 because the correction depends only on positions and damping parameters, never
-on the network's own prediction. Measured on a Cu(111) 3x3x4 slab, `mace-mh-1`
-and `mace-mpa-0` both give a correction of 0.4293 eV per atom, agreeing to six
-decimal places. Worth keeping as a sanity check.
+on the network's own prediction. Measured on a Cu(111) 3x3x4 slab, `mace-mh-1`,
+`mace-mpa-0` and `orb-v3-cons-inf-omat` all give a correction near 0.4295 eV per
+atom, agreeing to within 0.6 meV per atom despite MACE applying dispersion
+internally and Orb summing a separate `torch_dftd` calculator.
+
+The same invariant holds across the whole benchmark: the three pbe damped models
+shift by an identical amount on every one of the ten reactions, to within 1 meV,
+while UMA with rpbe damping shifts by a visibly different amount. That is both a
+sanity check and a result, since it means the dispersion overcorrection cannot be
+blamed on any individual model.
 
 ---
 
@@ -507,41 +518,84 @@ because it is a different potential energy surface.
 
 ## Current status
 
-**Seeded track complete for two models across both dispersion settings, 40
-barrier evaluations with no gaps. Autonomous track partially complete.** Orb and
-eSEN pending.
+**Seeded track complete for four models across both dispersion settings, 80
+barrier evaluations with no gaps. Autonomous track partially complete.** eSEN
+pending gated access.
 
-### Headline: dispersion overcorrects, on both models
+### Headline
 
 `barrier_at_reference_geometry_eV` is a single point at the published BEEF vdW
 saddle with nothing moved. No search, no refinement, no Hessian. It therefore
 exists for every reaction regardless of whether anything downstream converged.
 
-| Model | Dispersion | MAE (eV) | RMSE (eV) | Errors below reference |
-|---|---|---:|---:|---:|
-| UMA S 1.1 | **off** | **0.166** | 0.222 | 4 of 10 |
-| UMA S 1.1 | on | 0.445 | 0.502 | **10 of 10** |
-| MACE mh 1 | **off** | **0.174** | 0.263 | 7 of 10 |
-| MACE mh 1 | on | 0.378 | 0.460 | **10 of 10** |
+| Model | Surfaces in training? | D3 off | D3 on |
+|---|---|---:|---:|
+| UMA S 1.1 | yes | **0.166** | 0.445 |
+| MACE mh 1 | yes | **0.174** | 0.378 |
+| Orb v3 | no | 0.473 | 0.746 |
+| MACE mpa 0 | no | 0.769 | 1.030 |
 
-BEEF vdW, the best functional in the original paper, reports 0.14 eV against the
-same references.
+Mean absolute error in eV. BEEF vdW, the best functional in the original paper,
+reports 0.14 eV against the same references.
 
-Three things make this a real finding rather than a single model quirk:
+Two independent findings fall out, and they are separable because the design
+holds one variable constant while moving the other.
 
-**D3 off wins 9 of 10 reactions, independently, for each model.** Not an
-aggregate effect driven by one or two outliers.
+### Finding 1: dispersion makes every model worse
 
-**With D3 on, all ten errors are below the reference, for both models.** Twenty
-out of twenty. That is a systematic bias, not scatter.
+D3 off wins 9 of 10 reactions for UMA, 9 of 10 for MACE mh 1, and 10 of 10 for
+both out of domain models. **With dispersion on, 40 out of 40 errors fall below
+the reference**, across all four models. That is a systematic one directional
+bias, not scatter.
 
-**Two unrelated models agree closely with D3 off.** UMA at 0.166 eV and MACE at
-0.174 eV, an 8 meV difference in aggregate, from different architectures trained
-on different corpora. The mean downward shift from turning D3 on is 0.433 eV for
-UMA and 0.273 eV for MACE.
+The mean downward shift is 0.433 eV for UMA and 0.273 eV for each of the other
+three. That split is not arbitrary: UMA uses rpbe damping, the other three use
+pbe.
 
-The full per reaction table is in `results_seeded_summary.md`, and the figure is
-`seeded_d3_comparison.png`.
+**The three pbe damped models give shifts identical to within 1 meV on every
+single reaction.** MACE applies dispersion through its own internal
+`dispersion=True` path; Orb applies it as a summed `torch_dftd` calculator.
+Different code, different architectures, different training corpora, same number
+to three decimal places on all ten systems.
+
+That is exactly what should happen if the correction depends only on geometry and
+damping parameters rather than on the network's own prediction, which is the
+premise of adding D3 as a separate term. It also means the overcorrection cannot
+be attributed to any individual model. It is a property of applying these damping
+parameters to these systems. As a side effect the two implementations validate
+each other, which is a stronger check than either could provide alone.
+
+### Finding 2: training domain dominates architecture
+
+| Group | Models | Mean MAE, D3 off | Saddles confirmed |
+|---|---|---:|---|
+| Surfaces in training | UMA S 1.1, MACE mh 1 | **0.170 eV** | 4 to 6 of 10 |
+| Bulk crystals only | Orb v3, MACE mpa 0 | **0.621 eV** | **0 of 10 for both** |
+
+A 3.7x gap in mean absolute error, and a categorical split in whether a first
+order saddle can be confirmed at all.
+
+The control that makes this claim safe is **MACE mpa 0**. It shares a backend
+with MACE mh 1, so `_build_mace` forces `default_dtype="float64"` for both
+regardless of checkpoint. Same numerics, same dispersion mechanism, same code
+path. The only difference is that mh 1 saw surfaces in training and mpa 0 saw
+only bulk crystals. The out of domain model still confirms zero saddles out of
+ten, and is worse in magnitude than Orb despite Orb running at float32.
+
+That rules out numerical precision as the explanation. When Orb first returned
+zero confirmed saddles the natural suspicion was that float32 finite differences
+were too coarse to resolve Hessian curvature, which would have made it a pipeline
+artifact rather than a result. A float64 out of domain model failing identically
+settles the question.
+
+The failures are not marginal. MACE mpa 0 places the CH4/Ni(111) step transition
+state 1.755 eV **below** its own asymptotic reactant state, against a reference
+of 0.800 eV above it: a 2.56 eV error with a physically impossible sign. Orb does
+the same on N2/Ru(0001) step. These are not models that degrade gracefully off
+domain, they are models with no learned signal for the process at all.
+
+The full per reaction tables are in `results_seeded_summary.md`, and the figure
+is `seeded_d3_comparison.png`.
 
 ### Cross model divergence: CH4/Ru(0001)
 
@@ -556,7 +610,7 @@ settings. A site placement hypothesis was tested on 2026-09-14, comparing fcc
 and hcp starting hollows, and ruled out: both relaxed to an identical geometry
 with energies agreeing to about 1 µeV.
 
-MACE resolves the same reaction cleanly at the same published geometry: a
+MACE mh 1 resolves the same reaction cleanly at the same published geometry: a
 confirmed first order saddle, confirmed connectivity, a full zero point
 correction, and a barrier of 0.870 eV against the 0.800 eV reference.
 
@@ -565,12 +619,11 @@ intrinsically hard.
 
 ### Shared weakness: N2/Ru(0001) terrace
 
-The worst reaction for both models and both settings, and it stays worst with
-dispersion off: UMA 0.501 eV low, MACE 0.727 eV low. It is also the highest
-barrier in the set and the one with the widest experimental spread, 1.3 to 2.27
-eV against a 1.84 eV reference. Some of that discrepancy may sit in the
-reference rather than in the models, and the honest position is that this one is
-not yet separable.
+The worst reaction for three of the four models, and it stays worst with
+dispersion off. It is also the highest barrier in the set and the one with the
+widest experimental spread, 1.3 to 2.27 eV against a 1.84 eV reference. Some of
+that discrepancy may sit in the reference rather than in the models, and the
+honest position is that this one is not yet separable.
 
 ### Autonomous track
 
@@ -740,9 +793,15 @@ agentic-surface-catalysis/
 - **The autonomous sweep is incomplete.** Six validated results out of twenty
   planned reaction and dispersion combinations. The remainder halted on API
   credit exhaustion, not on a technical failure, and the resume path is fixed.
-- **Orb and eSEN have not been swept.** Two of the five registered models remain
-  untested. MACE is now done for both dispersion settings, which is what makes
-  the headline a cross model result rather than a single model one.
+- **eSEN has not been swept.** One of the five registered models remains
+  untested, blocked on OMol25 gated access rather than on anything technical.
+  The other four are complete on the seeded track for both dispersion settings.
+- **The out of domain models are only measured on the seeded track.** Orb and
+  MACE mpa 0 were never run through the autonomous pipeline, because a model
+  that cannot confirm a saddle from a published transition state is not going to
+  find one from scratch, and the agent time would have bought nothing. This is a
+  deliberate scope decision rather than an omission, but it does mean the
+  domain mismatch finding rests on seeded evidence alone.
 - **Noise floors are still placeholders.** `noise_floor_eV: 0.3` has been split
   into `model_resolution_eV` and `reproducibility_eV`. The second is `None`,
   **not yet measured**, and is itself one of the intended results. Until it
@@ -786,11 +845,13 @@ agentic-surface-catalysis/
   in the relaxation loop by default rather than applied afterward as a single
   point correction: the geometry shift under dispersion is most of the effect.
   **On the evidence in this repository, `with_d3=True` is the wrong default for
-  surface barriers on both UMA and MACE**, and the registry default should be
+  surface barriers on every model tested**, and the registry default should be
   revisited.
 - D3 is known to overbind on some metal surfaces. The results here are
-  consistent with that and stronger: twenty out of twenty errors below the
-  reference with dispersion on, across two independent models.
+  consistent with that and stronger: forty out of forty errors below the
+  reference with dispersion on, across four independent models and two separate
+  dispersion implementations, with the three pbe damped models shifting by an
+  identical amount to within 1 meV on every reaction.
 - UMA's benchmarked MAE against its own reference DFT is roughly 0.009 eV. Any
   computed quantity below that is not resolvable from zero, regardless of how
   tightly the optimiser converged. The equivalent floor for the other models is
