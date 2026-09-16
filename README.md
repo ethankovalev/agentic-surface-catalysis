@@ -29,6 +29,52 @@ measured across four models and both dispersion settings, is that **dispersion
 hurts every model tested, and training domain matters more than architecture.**
 See [Current status](#current-status).
 
+## Where this sits in the field
+
+The Nature Catalysis roadmap for AI in heterogeneous catalysis (Xin, Kitchin,
+López, Schweitzer et al., 2026) sets out five pillars of laboratory autonomy:
+task automation, workflow automation, intelligent planning, closed loop
+automation, and human machine collaboration. It is worth being precise rather
+than flattering about where this project falls.
+
+**This is pillar two, workflow automation, with a verification layer.** The
+roadmap's own criticism of that stage is that such systems remain tool centric,
+running human designed protocols and static heuristics rather than setting goals
+or adapting strategy. That description fits the supervisor and three worker
+agents here exactly. The agent executes a fixed sequence with retries. It does
+not plan.
+
+What the project does contribute is the guardrail layer the roadmap asks for
+separately. In its discussion of foundation models it identifies three
+deficiencies to be addressed: poor robustness under domain shift, uncalibrated
+uncertainty, and insufficient grounding in physical laws. In its forward looking
+architecture it calls for a guardrail stack that blocks high uncertainty or out
+of distribution proposals for human verification, operating inside bounded
+autonomy windows.
+
+Mapped onto this repository:
+
+| Roadmap requirement | Implementation here |
+|---|---|
+| Grounding in physical laws | eleven physics checks that never see the reference value |
+| Bounded autonomy | `exit_gate`, which the supervisor cannot override |
+| Out of distribution detection | four model comparison; saddle confirmation rate splits 4 to 6 of 10 in domain against 0 of 10 out of domain |
+| Provenance completeness | `provenance` on every stored result, seeded and autonomous kept in separate directories |
+| Negative and null results | `NOTES.md` records diagnosed failures, not just successes |
+
+**What this repository is not.** It is not a data curation contribution, which
+the roadmap treats as its first pillar and which requires consortium scale work
+on ontologies, ELN integration and cloud platforms. It is not a digital twin or
+a planner executor, which the roadmap places at pillar four and which would
+require the reactor and microkinetic modelling this project deliberately avoids.
+
+**The next rung is pillar three, intelligent planning**, and the natural form it
+takes here is an escalation decision rather than a fixed sequence: run the in
+domain models, measure their disagreement, and accept, retry, or escalate to
+human or DFT verification. Finding 3 below is the evidence that such a signal
+exists in the data. Building and validating it is future work and is marked as
+such.
+
 ---
 
 ## Two tracks, and why they must never be averaged together
@@ -597,6 +643,43 @@ domain, they are models with no learned signal for the process at all.
 The full per reaction tables are in `results_seeded_summary.md`, and the figure
 is `seeded_d3_comparison.png`.
 
+### Finding 3: in domain disagreement carries an escalation signal
+
+An escalation trigger needs a confidence estimate available at run time, when
+the reference value is unknown by definition. Deep ensembles are the standard
+answer and are impractical for foundation models, where a single pretrained
+checkpoint is all that exists. Disagreement between two independently trained in
+domain models is a cheaper substitute that this benchmark produces for free.
+
+Reactions ordered by how much UMA and MACE mh 1 disagree, dispersion off:
+
+| Reaction | In domain disagreement (eV) | Mean in domain error (eV) |
+|---|---:|---:|
+| CH4/Ru(0001) | 0.040 | 0.277 |
+| H2/Cu(111) | 0.049 | 0.058 |
+| CH4/Ni(111) step | 0.100 | 0.123 |
+| H2/Pt(111) | 0.105 | 0.074 |
+| CH4/Ni(111) terrace | 0.119 | 0.114 |
+| H2/Cu(100) | 0.120 | 0.060 |
+| H2/Ru(0001) | 0.129 | 0.230 |
+| N2/Ru(0001) step | 0.137 | 0.069 |
+| CH4/Ni(100) | 0.159 | 0.080 |
+| **N2/Ru(0001) terrace** | **0.226** | **0.614** |
+
+Correlation r = +0.54, and the reaction with the largest disagreement is also
+the reaction with the largest error. **With n = 10 that gives p = 0.11, so it is
+not significant and is not claimed to be.** It is a signal worth building a
+trigger around and testing properly on a larger set, not a validated detector.
+
+The firmer result is a negative one. Pooling all four models flips the
+correlation to r = −0.18: disagreement from a model never trained on surfaces is
+noise rather than information, so **an out of domain model must not be averaged
+into a confidence estimate.** Only the specific four model design here, two in
+domain and two out, could have separated those two cases.
+
+Reproduce with `python analyse_disagreement.py`, which prints the sample size
+and p value alongside every correlation.
+
 ### Cross model divergence: CH4/Ru(0001)
 
 Worth stating precisely, because it is exactly what the two track architecture
@@ -759,6 +842,7 @@ agentic-surface-catalysis/
 ├── invoke.py                      # entry point, single reaction
 ├── build_seeds.py                 # SBH10 SI POSCARs to tagged, validated ASE
 ├── plot_seeded_results.py         # headline figure, no GPU required
+├── analyse_disagreement.py        # Finding 3, disagreement against error
 ├── patch_*.py                     # applied source patches, kept as documentation
 ├── requirements.txt
 ├── data/                          # checkpoints and HF cache (gitignored)
@@ -793,6 +877,11 @@ agentic-surface-catalysis/
 - **The autonomous sweep is incomplete.** Six validated results out of twenty
   planned reaction and dispersion combinations. The remainder halted on API
   credit exhaustion, not on a technical failure, and the resume path is fixed.
+- **The escalation layer is not built.** Finding 3 shows a disagreement signal
+  exists but the agent does not act on it. Making the agent choose between
+  accepting, retrying and escalating, rather than executing a fixed sequence, is
+  the step from workflow automation to intelligent planning and is the main
+  piece of unfinished agentic work.
 - **eSEN has not been swept.** One of the five registered models remains
   untested, blocked on OMol25 gated access rather than on anything technical.
   The other four are complete on the seeded track for both dispersion settings.
