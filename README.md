@@ -680,6 +680,43 @@ domain and two out, could have separated those two cases.
 Reproduce with `python analyse_disagreement.py`, which prints the sample size
 and p value alongside every correlation.
 
+#### Related work, and how this differs
+
+Disagreement as a confidence signal is not new, and the closest recent work
+sharpens rather than undermines what is above. Mehdi, Cho and Isayev
+(arXiv:2605.00640, May 2026) introduce PROBE, which trains a light classifier on
+a frozen MLIP's internal per atom embeddings to predict whether a prediction is
+reliable, tested on AIMNet2 and MACE OFF23.
+
+Their ensemble baseline matters here. They evaluate four independently trained
+copies of AIMNet2, same data and architecture, different seeds. As a binary
+reliability classifier that ensemble reaches 57.6 percent accuracy, below the 60
+percent majority class baseline, and as a continuous ranker it manages Spearman
+0.229. They attribute this to models trained on the same data making correlated
+mistakes in the same underrepresented regions.
+
+That is an independent result pointing the same way as the negative finding
+above, by a different mechanism. PROBE shows same architecture disagreement is
+weak because the models share blind spots. This benchmark shows that pooling an
+out of domain model destroys the signal for the opposite reason, because such a
+model is not correlated at all, it is wrong nearly everywhere. Both say that raw
+model disagreement is not a free lunch and that which models you disagree
+between decides whether the signal means anything.
+
+What is not covered by that work, in its own words, is its stated future
+direction: periodic systems, naming materials foundation MLIPs such as MACE MP
+and UMA; force uncertainty; and genuine out of distribution evaluation, training
+on one chemistry and testing on another. This benchmark sits in the first and
+third of those. It is periodic surfaces rather than molecules, it uses UMA, and
+its in domain against out of domain split is a deliberate distribution shift
+rather than a seed ensemble.
+
+The honest position: the question of how to get a confidence signal out of a
+foundation MLIP without a full ensemble is active and well resourced, and
+nothing here should be described as first of its kind. The narrower claim that
+survives is that the surface reaction regime is named as open by the closest
+paper in the area, and this repository has data in it.
+
 ### Cross model divergence: CH4/Ru(0001)
 
 Worth stating precisely, because it is exactly what the two track architecture
@@ -1039,6 +1076,11 @@ Sharada, S. M.; Bligaard, T.; Luntz, A. C.; Kroes, G.-J.; Nørskov, J. K.
 Surfaces.* J. Phys. Chem. C 2017, 121 (36), 19807–19815.
 
 Transition state geometries are taken from that paper's Supporting Information.
+
+Closest related work on MLIP confidence signals, and the source of the ensemble
+baseline discussed under Finding 3:
+Mehdi, S.; Cho, I.; Isayev, O. *Knowing when to trust machine learned
+interatomic potentials.* arXiv:2605.00640, May 2026.
 
 Successor set with revised references and published SRP DFT geometries:
 Kroes, G.-J. et al. *SBH17: Benchmark Database of Barrier Heights for
