@@ -2077,6 +2077,51 @@ def _closest_contact(atoms, n_metal: int) -> float:
 # Imported here rather than at the top of the file to keep the dependency
 # one-way: zpe reaches into calculators and store, never back into tools.
 from src.zpe import check_zpe_applied, compute_zpe_correction  # noqa: E402
+# Imported here for the same one-way-dependency reason as zpe above:
+# escalation reaches into store, never back into tools.
+from src.escalation import assess  # noqa: E402
+
+
+@tool
+def check_run_quality() -> str:
+    """Report on how confident this run should be, before finalising it.
+
+    Runs the same physics based assessment benchmark.py applies after
+    you finish, early: after compute_zpe_correction, while your normal
+    retry budget is still available to act on it.
+
+    This is informational only. It cannot mark a result validated and
+    cannot override exit_gate: those still depend purely on
+    check_saddle_connects, the imaginary mode counts, and the other
+    checks you already run. Calling this tool, or not calling it,
+    changes nothing about whether the run passes.
+
+    What it is for: if the level comes back CAUTION or REVIEW, decide
+    whether the reason is worth one more attempt within your existing
+    retry budget. If you decide not to retry, report the concern
+    plainly in your final summary rather than leaving it out. A
+    CAUTION or REVIEW level reported honestly is a correct outcome. A
+    concern smoothed over in the final report is not, and exit_gate
+    will catch the underlying issue regardless of what the report says.
+    """
+    try:
+        verdict = assess(store.snapshot())
+    except Exception as exc:
+        return (f"check_run_quality could not run: "
+               f"{type(exc).__name__}: {exc}. This does not block "
+               f"anything; continue as normal.")
+
+    lines = [f"Run quality: {verdict['level']}"]
+    for reason in verdict["blocking"]:
+        lines.append(f"  blocking (exit_gate will refuse this): {reason}")
+    for reason in verdict["review"]:
+        lines.append(f"  review: {reason}")
+    for note in verdict["notes"]:
+        lines.append(f"  note: {note}")
+    if verdict["level"] == "ACCEPTED":
+        lines.append("  nothing measurable has been flagged.")
+    return "\n".join(lines)
+
 
 STRUCTURE_TOOLS = [build_slab, build_stepped_slab, place_adsorbate, build_dissociated_endpoint]
 SIMULATION_TOOLS = [
@@ -2088,6 +2133,7 @@ SIMULATION_TOOLS = [
     build_gas_reference,
     compute_gas_referenced_barrier,
     compute_zpe_correction,
+    check_run_quality,
     read_results,
 ]
 VALIDATION_TOOLS = [

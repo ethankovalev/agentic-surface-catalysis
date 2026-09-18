@@ -153,6 +153,16 @@ result measured against a lower bar. Fix the path instead:
 
 Say what you changed and why.
 
+After compute_zpe_correction succeeds, call check_run_quality once. It
+cannot change whether the run passes and cannot fix anything by itself:
+it only tells you, a little earlier than you would otherwise find out,
+whether something about this specific run looks unusual. CAUTION or
+REVIEW is not a failure and not a reason to loop; it is a reason to
+decide, once, whether the concern is worth one more attempt inside your
+existing retry budget. Whatever you decide, put the concern in your
+final summary in plain words. Do not write a report that reads as
+settled when check_run_quality did not come back ACCEPTED.
+
 Report what you computed and stop. Do not judge whether the result is
 correct (that is the validation agent's job.)
 """
