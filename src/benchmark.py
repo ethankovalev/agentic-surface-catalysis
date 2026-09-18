@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 from src import store
+from src.escalation import assess
 
 
 # Fill reference_eV from Table 1 of the paper. Keep the keys stable;
@@ -245,6 +246,22 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
     ref = spec.get("reference_eV")
     error = None if (computed is None or ref is None) else computed - ref
 
+    # Post-hoc assessment of the finished run. Never sees the reference,
+    # and the agent never sees it: see patch_wire_escalation.py on why
+    # this sits outside the graph rather than inside it. Guarded because
+    # a crash here must not throw away a completed GPU run.
+    snapshot = store.snapshot()
+    try:
+        assessment = assess(snapshot)
+    except Exception as exc:
+        assessment = {
+            "level": "BLOCKED",
+            "blocking": [f"assessment itself failed: "
+                        f"{type(exc).__name__}: {exc}"],
+            "review": [],
+            "notes": [],
+        }
+
     return {
         "computed_eV": computed,
         "reference_eV": ref,
@@ -255,8 +272,9 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
         "validation": checks,
         "validation_detail": store.get("validation_detail", {}),
         "validated": store.all_checks_passed(),
+        "assessment": assessment,
         "run_error": error_note,
-        "trace": store.snapshot(),
+        "trace": snapshot,
     }
 
 
@@ -270,7 +288,10 @@ def run_benchmark(graph, subset=None, out_name="sbh10_results.json"):
         results[rid] = run_one(graph, rid, SBH10[rid])
         r = results[rid]
         print(f"  computed={r['computed_eV']} ref={r['reference_eV']} "
-              f"error={r['error_eV']} validated={r['validated']}")
+              f"error={r['error_eV']} validated={r['validated']} "
+              f"assessment={r.get('assessment', {}).get('level')}")
+        for reason in r.get("assessment", {}).get("review", []):
+            print(f"    review: {reason}")
 
     out_path = config.OUTPUT_DIR / out_name
     out_path.write_text(json.dumps(results, indent=2, default=str))
