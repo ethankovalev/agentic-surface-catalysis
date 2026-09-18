@@ -19,3 +19,4 @@ data
 work_seeds/
 *.pre_resume_fix
 *.pre_budget_fix
+*.pre_*
