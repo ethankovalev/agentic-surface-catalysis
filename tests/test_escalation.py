@@ -171,3 +171,67 @@ def test_malformed_records_are_blocked_not_crashed_on(record):
 def test_format_verdict_is_readable():
     text = format_verdict("CH4_Ni111_step", assess(CH4_NI111_STEP))
     assert "CH4_Ni111_step: BLOCKED" in text
+
+
+# --- the tool wrapper itself, not just assess() ------------------------
+# Everything above tests assess(), the pure function. Nothing above
+# tests check_run_quality, the @tool wrapped function in src/tools.py
+# that the agent actually calls. That gap is closed here.
+
+def test_check_run_quality_is_registered():
+    from src.tools import SIMULATION_TOOLS, check_run_quality
+    names = [getattr(f, "fn", f).__name__ if hasattr(f, "fn")
+            else f.name for f in SIMULATION_TOOLS]
+    assert "check_run_quality" in names
+
+
+def test_check_run_quality_blocks_the_ch4_step_case():
+    from src import store
+    from src.tools import check_run_quality
+
+    store.reset("CH4_Ni111_step")
+    store.put("saddle", CH4_NI111_STEP["saddle"])
+    store.put("saddle_connectivity", CH4_NI111_STEP["saddle_connectivity"])
+    store.put("endpoint_modes", CH4_NI111_STEP["endpoint_modes"])
+    store.put("zpe", CH4_NI111_STEP["zpe"])
+    store.put("barrier_zpe_eV", CH4_NI111_STEP["barrier_zpe_eV"])
+    store.put("neb", CH4_NI111_STEP["neb"])
+
+    result = check_run_quality.invoke({})
+    assert "BLOCKED" in result
+    assert "first order saddle" in result
+
+
+def test_check_run_quality_is_read_only():
+    """Calling it, repeatedly, must not change whether the run passes."""
+    from src import store
+    from src.tools import check_run_quality
+
+    store.reset("CH4_Ni111_step")
+    store.put("saddle", CH4_NI111_STEP["saddle"])
+    store.put("saddle_connectivity", CH4_NI111_STEP["saddle_connectivity"])
+    store.put("endpoint_modes", CH4_NI111_STEP["endpoint_modes"])
+
+    before = store.validation()
+    for _ in range(5):
+        check_run_quality.invoke({})
+    after = store.validation()
+
+    assert before == after
+    assert store.all_checks_passed() is False
+
+
+def test_check_run_quality_accepts_a_clean_run():
+    from src import store
+    from src.tools import check_run_quality
+
+    store.reset("H2_Cu111")
+    store.put("saddle", H2_CU111["saddle"])
+    store.put("saddle_connectivity", H2_CU111["saddle_connectivity"])
+    store.put("endpoint_modes", H2_CU111["endpoint_modes"])
+    store.put("zpe", H2_CU111["zpe"])
+    store.put("barrier_zpe_eV", H2_CU111["barrier_zpe_eV"])
+    store.put("neb", H2_CU111["neb"])
+
+    result = check_run_quality.invoke({})
+    assert "ACCEPTED" in result
