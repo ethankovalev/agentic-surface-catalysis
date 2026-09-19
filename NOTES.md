@@ -299,3 +299,8 @@ broader flat region needing a bigger push. Not established.
 
 0.6 A is now the committed literal. Worth rechecking H2_Cu100 at 0.6 to
 confirm the larger value does not break the case that already worked.
+
+Confirmed: H2_Cu100 re-run at 0.6 A still resolves, 2 attempts, barrier
+0.744 eV (error +0.004 against +0.003 at 0.3 A). The 1 meV difference is
+optimiser path noise. 0.6 A is therefore safe as a single constant for
+both documented ridge cases; no adaptive displacement needed.
