@@ -1164,7 +1164,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         else:
             # ridge: step off it along the second imaginary mode
             second = modes[1][1]
-            displacement = 0.1 * second
+            displacement = 0.3 * second
             delta0 = None
             strategy = (f"retry displaced 0.1 A along the second imaginary "
                         f"mode ({imag[1]:.1f} meV) after a ridge")
@@ -1180,7 +1180,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         "converged": final["converged"],
         "n_steps": final["n_steps"],
         "shift_from_neb_peak_eV": final["energy_eV"] - e_peak,
-        "with_d3": effective_with_d3(with_d3),
+        "with_d3": bool(with_d3),
         "fmax_target": SADDLE_FMAX,
         "scope": scope,
         "n_modes": n_modes,
