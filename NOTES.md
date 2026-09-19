@@ -278,3 +278,24 @@ to reach it.
 
 Untested: whether 0.3 A also resolves CH4_Ru0001's ~10 meV second mode,
 which is the other documented ridge case.
+
+## refine_saddle_robust resolves CH4_Ru0001 (2026-09-19)
+The reaction that resisted every previous approach - unresolved in both
+tracks, fcc/hcp site hypothesis tested and ruled out - gives a confirmed
+first-order saddle under ridge-descent recovery. 2 attempts, single mode
+at 123 meV.
+
+Barrier 1.077 eV against a 0.800 reference, error +0.277 eV. A real
+saddle, NOT an accurate one. Compare H2_Cu100 at +0.003 eV. The recovery
+locates the saddle; it does not fix the surface.
+
+Displacement threshold, two reactions:
+  H2_Cu100   (2nd mode 23 meV): 0.1 A failed, 0.3 A resolved
+  CH4_Ru0001 (2nd mode ~10 meV): 0.3 A -> 6.0 meV, still 2 modes;
+                                 0.6 A resolved
+A stronger second mode needed a SMALLER displacement. Hypothesis, from
+n=2 only: a deeper ridge sits in a narrower basin, a shallow one on a
+broader flat region needing a bigger push. Not established.
+
+0.6 A is now the committed literal. Worth rechecking H2_Cu100 at 0.6 to
+confirm the larger value does not break the case that already worked.
