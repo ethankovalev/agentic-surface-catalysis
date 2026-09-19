@@ -319,3 +319,21 @@ collapsed. Same conclusion, different cause.
 Open: refine_saddle_robust reports first_order_saddle=True here because
 it gates on mode count alone. Connectivity is computed in the probe but
 not used in the accept decision.
+
+## CH4_Ni100: no connecting saddle exists on UMA's surface (2026-09-19)
+Four strategies tried, all fail: default Sella, smaller trust radius,
+ridge displacement, and bond-constrained refinement. Every attempt that
+found a single imaginary mode failed connectivity (IRC and bond
+displacement agree). Drift never fell below +0.35 A even with the bond
+explicitly pinned.
+
+Best available number remains the unrefined single point at the
+published BEEF-vdW geometry: 0.900 eV against 0.760, error +0.140 -
+more accurate than any refined result (0.629, error -0.131).
+
+Conclusion: UMA has no first-order saddle near the published TS that
+connects reactant to product for this reaction. A statement about the
+model, established by the verification layer rather than assumed.
+
+Note: the failure message wrongly attributed attempt 3 to ridge
+displacement when it used constraints. Cosmetic, worth fixing.
