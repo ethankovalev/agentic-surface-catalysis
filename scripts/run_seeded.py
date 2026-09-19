@@ -256,7 +256,12 @@ def connectivity_by_bond_displacement(name, model_key, with_d3, work):
     """
     saddle = read(str(work / "saddle.traj"))
     ads = adsorbate_indices(saddle)
-    anchor, terminal, r_saddle = breaking_bond(saddle, ads)
+    # Use the cutoff-free finder from src.tools, not this module's own
+    # breaking_bond. The local one uses a 2.2x reach, 2.354 A for C-H;
+    # a CH4/Ni(100) saddle measured 2.389 A, fell outside it, and the
+    # local finder silently returned a 1.091 A spectator.
+    from src.tools import _breaking_bond as _bb_no_cutoff
+    anchor, terminal, r_saddle = _bb_no_cutoff(saddle)
     intact = covalent_radii[saddle[anchor].number] + covalent_radii[saddle[terminal].number]
 
     axis = saddle.positions[terminal] - saddle.positions[anchor]

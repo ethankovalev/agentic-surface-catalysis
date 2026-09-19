@@ -57,7 +57,8 @@ from src.tools import new_calculator, refine_saddle, refine_saddle_robust
 # functions, not part of src.tools. Imported from there directly so this
 # probe uses the identical asymptotic-state convention rather than a
 # second copy that could drift from it.
-from run_seeded import adsorbate_indices, build_asymptotic
+from run_seeded import (adsorbate_indices, build_asymptotic,
+                       connectivity_by_bond_displacement)
 
 
 def reference_eV(reaction):
@@ -108,7 +109,17 @@ def setup_and_probe(reaction, model_key, with_d3, use_robust):
     else:
         msg = refine_saddle.invoke(kwargs)
 
-    return msg, (store.get("saddle") or {}), (e_seed - e_asym)
+    saddle = store.get("saddle") or {}
+    connectivity = None
+    if saddle.get("first_order_saddle"):
+        try:
+            connectivity = connectivity_by_bond_displacement(
+                reaction, model_key, with_d3, work)
+        except Exception as exc:
+            connectivity = {"connects": None,
+                            "error": f"{type(exc).__name__}: {exc}"}
+
+    return msg, saddle, (e_seed - e_asym), connectivity
 
 
 def main():
@@ -128,7 +139,7 @@ def main():
         print("=" * 70)
         print(f"STAGE 1: original refine_saddle on {args.reaction}")
         print("=" * 70)
-        msg, saddle, _ = setup_and_probe(
+        msg, saddle, _, _ = setup_and_probe(
             args.reaction, args.model, with_d3, use_robust=False)
         print(msg)
         imag = [round(float(m), 1)
@@ -151,9 +162,12 @@ def main():
     print("=" * 70)
     print(f"STAGE 2: refine_saddle_robust on {args.reaction}")
     print("=" * 70)
-    msg, saddle, at_reference = setup_and_probe(
+    msg, saddle, at_reference, connectivity = setup_and_probe(
         args.reaction, args.model, with_d3, use_robust=True)
     print(msg)
+    if connectivity is not None:
+        print()
+        print(f"connectivity (bond displacement): {connectivity}")
 
     attempts = store.get("saddle_attempts") or []
     imag = [round(float(m), 1)
