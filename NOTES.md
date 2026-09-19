@@ -258,3 +258,23 @@ Four-model MAE at reference geometry:
 
 Saddle confirmation: in-domain models 4-6/10, out-of-domain models
 0/10 for both, regardless of backend or precision.
+
+## refine_saddle_robust resolves H2_Cu100 (2026-09-19)
+The ~23 meV second imaginary mode on H2_Cu100, stable across both
+dispersion settings and every previous refine_saddle attempt, is a
+symmetry artifact as the README hypothesised. Displacing along the
+second imaginary mode and re-refining breaks the ridge.
+
+0.1 A displacement: 3 attempts, still 2 imaginary modes (23 -> 19 meV).
+Too small to leave the basin.
+0.3 A displacement: 2 attempts, 1 imaginary mode at 125 meV.
+Barrier 0.743 eV against a 0.740 eV reference, error +0.003 eV - the
+closest single number in the project, previous best being H2_Cu111 at
++0.027 eV.
+
+H2_Cu100 moves from "gate correctly refused" to validated. The saddle
+was always there; the original single-attempt refine_saddle had no way
+to reach it.
+
+Untested: whether 0.3 A also resolves CH4_Ru0001's ~10 meV second mode,
+which is the other documented ridge case.
