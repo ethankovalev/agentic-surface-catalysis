@@ -1062,6 +1062,63 @@ def _breaking_bond_length(atoms):
     return None if found is None else found[2]
 
 
+CONNECTIVITY_PUSH_A = 0.35
+CONNECTIVITY_STEPS = 60
+
+
+def _connectivity_by_bond(atoms, model_key, with_d3):
+    """Push the breaking bond both ways; see where each side falls.
+
+    Weaker than following the imaginary mode, and named accordingly.
+    What it rules out is a saddle sitting somewhere other than between
+    the intact molecule and the dissociated fragments.
+
+    Returns (connects, detail). connects is None when the breaking bond
+    cannot be identified, which is not the same as False and must not be
+    treated as one.
+    """
+    found = _breaking_bond(atoms)
+    if found is None:
+        return None, "breaking bond could not be identified"
+
+    anchor, terminal, r_saddle = found
+    intact = (covalent_radii[atoms[anchor].number]
+              + covalent_radii[atoms[terminal].number])
+
+    axis = atoms.positions[terminal] - atoms.positions[anchor]
+    norm = np.linalg.norm(axis)
+    if norm < 1e-6:
+        return None, "breaking bond has zero length"
+    axis = axis / norm
+
+    out = {}
+    for label, sign in (("compressed", -1.0), ("stretched", +1.0)):
+        trial = atoms.copy()
+        trial.positions[terminal] += sign * CONNECTIVITY_PUSH_A * axis
+        trial.calc = new_calculator(model_key, with_d3=with_d3)
+        BFGS(trial, logfile=None).run(fmax=0.05, steps=CONNECTIVITY_STEPS)
+        out[label] = float(trial.get_distance(anchor, terminal, mic=True))
+
+    recombined = bool(out["compressed"] < intact * 1.35)
+    dissociated = bool(out["stretched"] > max(r_saddle, intact) * 1.25)
+    connects = bool(recombined and dissociated)
+
+    if connects:
+        detail = (f"compressed to {out['compressed']:.2f} A, stretched to "
+                  f"{out['stretched']:.2f} A")
+    else:
+        why = []
+        if not recombined:
+            why.append(f"compressing left it at {out['compressed']:.2f} A "
+                       f"instead of falling back toward {intact:.2f} A")
+        if not dissociated:
+            why.append(f"stretching left it at {out['stretched']:.2f} A "
+                       "instead of running away to dissociation")
+        detail = "; ".join(why)
+
+    return connects, detail
+
+
 def _geometry_is_still_a_saddle(atoms, r_seed):
     """Has the breaking bond stayed stretched, or fallen back?
 
@@ -1236,7 +1293,21 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         if geometry_reason:
             attempts[-1]["geometry_reason"] = geometry_reason
 
+        # Connectivity only matters for something that is already a
+        # first order saddle with a sane geometry. Checking it otherwise
+        # spends two relaxations to confirm what is already known.
+        connects = None
+        connect_detail = ""
         if len(imag) == 1 and geometry_ok:
+            connects, connect_detail = _connectivity_by_bond(
+                atoms, model_key, with_d3)
+            attempts[-1]["connects"] = connects
+            attempts[-1]["connectivity_detail"] = connect_detail
+
+        # connects is None when the bond could not be identified. That
+        # is an unknown, not a failure, and must not silently reject a
+        # result that may be correct.
+        if len(imag) == 1 and geometry_ok and connects is not False:
             break
 
         if attempt == max_attempts:
@@ -1245,7 +1316,16 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         # choose the next strategy from how this attempt failed. A
         # geometry that collapsed is basin collapse even when the mode
         # count looks right, so it takes the same recovery.
-        if len(imag) == 1 and not geometry_ok:
+        if len(imag) == 1 and geometry_ok and connects is False:
+            # A real saddle, for the wrong reaction. On the seeded track
+            # the starting geometry is the published transition state, so
+            # the cure is to stop wandering away from it.
+            delta0 = 0.005
+            displacement = None
+            strategy = ("retry with a smaller trust radius after landing "
+                        "on a saddle that does not connect reactant to "
+                        "product")
+        elif len(imag) == 1 and not geometry_ok:
             delta0 = 0.005
             displacement = None
             strategy = ("retry with a smaller trust radius after the "
@@ -1265,7 +1345,9 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
 
     final = attempts[-1]
     imag = final["imaginary_modes_meV"]
-    first_order = len(imag) == 1 and final.get("geometry_ok", True)
+    first_order = (len(imag) == 1
+                   and final.get("geometry_ok", True)
+                   and final.get("connects") is not False)
     barrier = final["energy_eV"] - e_initial
 
     record = {
@@ -1282,6 +1364,12 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         "first_order_saddle": first_order,
         "neb_barrier_eV": neb.get("barrier_eV"),
         "r_b_drift_A": final["r_b_drift_A"],
+        "connects": final.get("connects"),
+        "connectivity_detail": final.get("connectivity_detail", ""),
+        "connectivity_method": "bond_displacement",
+        "connectivity_note": (
+            "weaker than mode following; confirms the saddle lies between "
+            "reactant and product along the bond coordinate only"),
         "n_attempts": len(attempts),
         "recovered": len(attempts) > 1 and first_order,
     }
@@ -1301,7 +1389,13 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
             f"bond drift {drift_txt}")
     trail = "\n".join(lines)
 
-    if len(imag) == 1 and not final.get("geometry_ok", True):
+    if len(imag) == 1 and final.get("connects") is False:
+        head = (f"SADDLE FOR A DIFFERENT REACTION after {len(attempts)} "
+                f"attempt(s): one imaginary mode at {imag[0]:.1f} meV and a "
+                f"sane geometry, but it does not connect reactant to "
+                f"product - {final.get('connectivity_detail', '')}. The "
+                "barrier is not this reaction's.")
+    elif len(imag) == 1 and not final.get("geometry_ok", True):
         head = (f"NOT A TRANSITION STATE after {len(attempts)} attempt(s): "
                 f"one imaginary mode at {imag[0]:.1f} meV, but "
                 f"{final.get('geometry_reason', 'the geometry has collapsed')}"
