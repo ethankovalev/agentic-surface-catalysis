@@ -1006,17 +1006,98 @@ def _imaginary_modes_with_vectors(atoms, indices, name):
     return found, len(energies)
 
 
-def _breaking_bond_length(atoms):
-    """Length of the bond being broken, or None if it cannot be found."""
+# A saddle whose breaking bond has relaxed back to this multiple of the
+# covalent radius sum has fallen into the reactant basin, whatever its
+# mode count says. 1.15 sits above the two measured collapses (ratios
+# 1.05 and 1.03 for C-H) and well below a genuine saddle (about 1.6 for
+# H-H on Cu(100)).
+COLLAPSE_RATIO = 1.15
+
+# And a bond this far from where the search started has left the region
+# it was asked about, in either direction.
+MAX_DRIFT_A = 0.5
+
+
+def _breaking_bond(atoms):
+    """(anchor, terminal, length) of the bond being broken, or None.
+
+    Uses a 2.2x reach rather than an intact-molecule cutoff, for the
+    reason run_seeded.py's own breaking_bond documents: at a transition
+    state the breaking bond is already stretched well past equilibrium -
+    CH4/Ni(100) sits at 1.91 A against a 1.09 A normal C-H - so a normal
+    cutoff excludes exactly the bond being looked for and silently
+    returns a spectator. src.tools.breaking_bond uses _bonded_to, which
+    is that normal cutoff, and using it here made the drift guard
+    compare one untouched C-H against another and report +0.012 A while
+    the real breaking bond had collapsed by 0.79 A.
+    """
     try:
         tags = atoms.get_tags()
         ads = [i for i in range(len(atoms)) if tags[i] == 2]
         if len(ads) < 2:
             return None
-        a, b, _ = breaking_bond(atoms, ads)
-        return float(atoms.get_distance(a, b, mic=True))
+        anchor = max(ads, key=lambda k: covalent_radii[atoms[k].number])
+        others = [k for k in ads if k != anchor]
+        if not others:
+            return None
+        # The FARTHEST adsorbate atom from the anchor, with no distance
+        # cutoff at all. At a dissociation saddle the breaking bond is by
+        # construction the longest anchor-to-fragment distance, so a
+        # cutoff can only ever exclude the right answer. run_seeded.py
+        # uses a 2.2x reach for this, which is wide enough for a 1.91 A
+        # stretched C-H but still silently returns a 1.09 A spectator
+        # once the bond passes 2.35 A - the same failure this patch
+        # exists to fix, at the other end of the range.
+        terminal = max(
+            others, key=lambda k: atoms.get_distance(anchor, k, mic=True))
+        return (anchor, terminal,
+                float(atoms.get_distance(anchor, terminal, mic=True)))
     except Exception:
         return None
+
+
+def _breaking_bond_length(atoms):
+    """Length of the bond being broken, or None if it cannot be found."""
+    found = _breaking_bond(atoms)
+    return None if found is None else found[2]
+
+
+def _geometry_is_still_a_saddle(atoms, r_seed):
+    """Has the breaking bond stayed stretched, or fallen back?
+
+    Returns (ok, reason). One imaginary mode is necessary but not
+    sufficient: a geometry that has relaxed back to a near-intact
+    molecule can still show a single soft mode, and on 2026-09-19 two
+    reactions did exactly that and were accepted as transition states.
+    """
+    found = _breaking_bond(atoms)
+    if found is None:
+        return True, "breaking bond could not be identified, guard skipped"
+
+    anchor, terminal, r_now = found
+    intact = (covalent_radii[atoms[anchor].number]
+              + covalent_radii[atoms[terminal].number])
+    ratio = r_now / intact if intact > 0 else float("inf")
+
+    if r_seed is not None and r_now - r_seed > MAX_DRIFT_A:
+        return False, (
+            f"breaking bond stretched to {r_now:.3f} A, {r_now - r_seed:+.3f} "
+            f"A past the {r_seed:.3f} A starting geometry: the fragments have "
+            "separated, so this is the product side rather than a saddle")
+
+    if ratio < COLLAPSE_RATIO:
+        return False, (
+            f"breaking bond relaxed to {r_now:.3f} A, only {ratio:.2f}x the "
+            f"{intact:.2f} A covalent sum: this is a near-intact molecule, "
+            "not a transition state")
+
+    if r_seed is not None and r_seed - r_now > MAX_DRIFT_A:
+        return False, (
+            f"breaking bond fell {r_now - r_seed:+.3f} A from the "
+            f"{r_seed:.3f} A starting geometry: the optimiser has left the "
+            "region it was asked about")
+
+    return True, ""
 
 
 def _run_sella(atoms, max_steps, delta0=None):
@@ -1149,14 +1230,27 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
             "r_b_drift_A": drift,
         })
 
-        if len(imag) == 1:
+        geometry_ok, geometry_reason = _geometry_is_still_a_saddle(
+            atoms, r_peak)
+        attempts[-1]["geometry_ok"] = geometry_ok
+        if geometry_reason:
+            attempts[-1]["geometry_reason"] = geometry_reason
+
+        if len(imag) == 1 and geometry_ok:
             break
 
         if attempt == max_attempts:
             break
 
-        # choose the next strategy from how this attempt failed
-        if len(imag) == 0:
+        # choose the next strategy from how this attempt failed. A
+        # geometry that collapsed is basin collapse even when the mode
+        # count looks right, so it takes the same recovery.
+        if len(imag) == 1 and not geometry_ok:
+            delta0 = 0.005
+            displacement = None
+            strategy = ("retry with a smaller trust radius after the "
+                        "geometry collapsed despite a single mode")
+        elif len(imag) == 0:
             # basin collapse: keep the steps local this time
             delta0 = 0.005
             displacement = None
@@ -1171,7 +1265,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
 
     final = attempts[-1]
     imag = final["imaginary_modes_meV"]
-    first_order = len(imag) == 1
+    first_order = len(imag) == 1 and final.get("geometry_ok", True)
     barrier = final["energy_eV"] - e_initial
 
     record = {
@@ -1207,7 +1301,12 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
             f"bond drift {drift_txt}")
     trail = "\n".join(lines)
 
-    if first_order:
+    if len(imag) == 1 and not final.get("geometry_ok", True):
+        head = (f"NOT A TRANSITION STATE after {len(attempts)} attempt(s): "
+                f"one imaginary mode at {imag[0]:.1f} meV, but "
+                f"{final.get('geometry_reason', 'the geometry has collapsed')}"
+                ". A single mode is necessary but not sufficient.")
+    elif first_order:
         head = (f"Refined to a first-order saddle after {len(attempts)} "
                 f"attempt(s). Barrier {barrier:.3f} eV, one imaginary mode "
                 f"at {imag[0]:.1f} meV.")
