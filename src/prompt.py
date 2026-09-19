@@ -153,6 +153,16 @@ result measured against a lower bar. Fix the path instead:
 
 Say what you changed and why.
 
+If refine_saddle does not give exactly one imaginary mode, call
+refine_saddle_robust instead of accepting the result or rerunning the
+band. It retries with a strategy matched to the failure: a smaller
+trust radius when the optimiser fell into a minimum, a displacement
+along the second imaginary mode when it landed on a ridge. It cannot
+help a genuinely barrierless reaction, where there is no saddle to
+find, so do not loop on one. If it reports that recovery was needed,
+say so in your summary rather than presenting the result as a clean
+first pass.
+
 After compute_zpe_correction succeeds, call check_run_quality once. It
 cannot change whether the run passes and cannot fix anything by itself:
 it only tells you, a little earlier than you would otherwise find out,
