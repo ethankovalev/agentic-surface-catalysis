@@ -1119,6 +1119,121 @@ def _connectivity_by_bond(atoms, model_key, with_d3):
     return connects, detail
 
 
+IRC_FMAX = 0.05
+IRC_STEPS = 60
+# Deliberately short. Tested on EMT: 20 free steps after pinning the
+# bond at 1.909 A let it run to 3.049 A, undoing the constraint
+# completely. The drift guard would reject that, so it fails safe, but
+# it would also make this strategy useless. The polish exists only to
+# tighten a geometry the constrained stage already placed correctly.
+CONSTRAINED_POLISH_STEPS = 8
+
+
+def _connectivity_by_irc(atoms, model_key, with_d3):
+    """Follow the imaginary mode both ways. The stronger connectivity test.
+
+    Returns (connects, detail). connects is None when IRC cannot run or
+    cannot converge, which is an unknown and NOT a failure: on a
+    near-barrierless surface there is no meaningful mode to follow, and
+    reporting that as "does not connect" would reject correct results.
+
+    One IRC object is used for both directions on purpose. sella caches
+    its initial diagonalization in self.v0ts and restores it when the
+    direction changes; a second object would redo that diagonalization
+    and could choose the opposite sign for v0ts, which would silently
+    run the same direction twice.
+    """
+    found = _breaking_bond(atoms)
+    if found is None:
+        return None, "breaking bond could not be identified"
+    anchor, terminal, r_saddle = found
+    intact = (covalent_radii[atoms[anchor].number]
+              + covalent_radii[atoms[terminal].number])
+
+    try:
+        from sella import IRC
+    except ImportError:
+        return None, "sella.IRC not available"
+
+    ends = {}
+    try:
+        work = atoms.copy()
+        work.calc = new_calculator(model_key, with_d3=with_d3)
+        irc = IRC(work, trajectory=None, logfile=None, dx=0.1)
+        for direction in ("forward", "reverse"):
+            irc.run(fmax=IRC_FMAX, steps=IRC_STEPS, direction=direction)
+            ends[direction] = float(
+                work.get_distance(anchor, terminal, mic=True))
+    except Exception as exc:
+        return None, f"IRC did not run: {type(exc).__name__}: {exc}"
+
+    lo, hi = sorted(ends.values())
+    recombined = bool(lo < intact * 1.35)
+    dissociated = bool(hi > max(r_saddle, intact) * 1.25)
+    connects = bool(recombined and dissociated)
+
+    if connects:
+        detail = (f"IRC: one side to {lo:.2f} A, the other to {hi:.2f} A")
+    else:
+        why = []
+        if not recombined:
+            why.append(f"IRC's nearer end stopped at {lo:.2f} A instead of "
+                       f"falling back toward {intact:.2f} A")
+        if not dissociated:
+            why.append(f"IRC's farther end stopped at {hi:.2f} A instead of "
+                       "running away to dissociation")
+        detail = "IRC: " + "; ".join(why)
+    return connects, detail
+
+
+def _check_connectivity(atoms, model_key, with_d3):
+    """IRC first, bond displacement as the fallback.
+
+    IRC is the stronger test but will not converge on a near-flat
+    surface. When it returns an unknown, fall back rather than treat the
+    unknown as a result.
+    """
+    connects, detail = _connectivity_by_irc(atoms, model_key, with_d3)
+    if connects is not None:
+        return connects, detail
+    fallback, fdetail = _connectivity_by_bond(atoms, model_key, with_d3)
+    return fallback, f"{detail}; fell back to bond displacement: {fdetail}"
+
+
+def _refine_constrained(atoms, r_target, max_steps):
+    """Refine with the breaking bond pinned, then polish it free.
+
+    Stops the optimiser wandering out of the region it was asked about,
+    which on the seeded track is the published transition state itself.
+    A constrained optimum is not a saddle in the full space, so the
+    short unconstrained polish afterwards is what makes the result
+    meaningful; it is capped so it can tighten a good geometry without
+    drifting away again.
+    """
+    from sella import Constraints, Sella
+
+    found = _breaking_bond(atoms)
+    if found is None:
+        return False, 0, "breaking bond could not be identified"
+    anchor, terminal, _ = found
+
+    cons = Constraints(atoms)
+    cons.fix_bond((anchor, terminal), target=r_target)
+    dyn = Sella(atoms, order=1, internal=False, constraints=cons,
+                trajectory=_path("saddle.traj"), logfile="-")
+    dyn.run(fmax=SADDLE_FMAX, steps=max_steps)
+    n_constrained = int(dyn.get_number_of_steps())
+
+    free = Sella(atoms, order=1, internal=False,
+                 trajectory=_path("saddle.traj"), logfile="-")
+    converged = bool(free.run(fmax=SADDLE_FMAX,
+                              steps=CONSTRAINED_POLISH_STEPS))
+    total = n_constrained + int(free.get_number_of_steps())
+    return converged, total, (
+        f"bond pinned at {r_target:.3f} A for {n_constrained} steps, then "
+        f"{int(free.get_number_of_steps())} free")
+
+
 def _geometry_is_still_a_saddle(atoms, r_seed):
     """Has the breaking bond stayed stretched, or fallen back?
 
@@ -1244,6 +1359,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
     strategy = "from the NEB peak, default trust radius"
     delta0 = None
     displacement = None
+    constrain_to = None
 
     for attempt in range(1, max_attempts + 1):
         atoms = read(str(peak_file))
@@ -1253,7 +1369,13 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         if displacement is not None:
             atoms.positions = atoms.positions + displacement
 
-        converged, n_steps = _run_sella(atoms, max_steps, delta0)
+        if constrain_to is not None:
+            converged, n_steps, how = _refine_constrained(
+                atoms, constrain_to, max_steps)
+            attempts_note = how
+        else:
+            converged, n_steps = _run_sella(atoms, max_steps, delta0)
+            attempts_note = ""
         e_after = float(atoms.get_potential_energy())
 
         tags = atoms.get_tags()
@@ -1285,6 +1407,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
             "imaginary_modes_meV": imag,
             "r_b_A": r_now,
             "r_b_drift_A": drift,
+            "note": attempts_note,
         })
 
         geometry_ok, geometry_reason = _geometry_is_still_a_saddle(
@@ -1299,7 +1422,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         connects = None
         connect_detail = ""
         if len(imag) == 1 and geometry_ok:
-            connects, connect_detail = _connectivity_by_bond(
+            connects, connect_detail = _check_connectivity(
                 atoms, model_key, with_d3)
             attempts[-1]["connects"] = connects
             attempts[-1]["connectivity_detail"] = connect_detail
@@ -1319,12 +1442,15 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
         if len(imag) == 1 and geometry_ok and connects is False:
             # A real saddle, for the wrong reaction. On the seeded track
             # the starting geometry is the published transition state, so
-            # the cure is to stop wandering away from it.
-            delta0 = 0.005
+            # the cure is to stop wandering away from it. Pinning the
+            # breaking bond does that directly; a smaller trust radius
+            # only slows the wandering down.
+            constrain_to = r_peak
+            delta0 = None
             displacement = None
-            strategy = ("retry with a smaller trust radius after landing "
-                        "on a saddle that does not connect reactant to "
-                        "product")
+            strategy = ("retry with the breaking bond pinned at its "
+                        "starting length, after landing on a saddle that "
+                        "does not connect reactant to product")
         elif len(imag) == 1 and not geometry_ok:
             delta0 = 0.005
             displacement = None
