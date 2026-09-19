@@ -337,3 +337,34 @@ model, established by the verification layer rather than assumed.
 
 Note: the failure message wrongly attributed attempt 3 to ridge
 displacement when it used constraints. Cosmetic, worth fixing.
+
+## Full robust-saddle results, UMA D3-off seeded (2026-09-19)
+Connectivity now enforced in the accept decision (IRC primary, bond
+displacement fallback). Four previously-refused reactions retested.
+
+RESOLVED, connectivity confirmed:
+  H2_Cu100    0.744 eV vs 0.740, error +0.004. Ridge recovery, 2
+              attempts. Compressed 0.749 A (intact), stretched 2.584 A.
+  CH4_Ru0001  1.077 eV vs 0.800, error +0.277. Ridge recovery, 2
+              attempts. Compressed 1.101 A, stretched 2.700 A. The
+              earlier result predates enforced connectivity but HOLDS
+              UP under it: a genuine saddle UMA places 0.277 eV high.
+
+NOT RESOLVED, and for different reasons:
+  CH4_Ni100       Four strategies fail. Every single-mode result fails
+                  connectivity. No connecting saddle near the published
+                  TS on UMA's surface.
+  CH4_Ni111_step  Drift guard rejected at +0.507 A against a 0.5 limit,
+                  7 mA over an arbitrary constant. Raised the limit to
+                  0.7 as a diagnostic: IRC then rejected it
+                  independently, both ends at 2.61 and 2.75 A, i.e.
+                  descending to product in BOTH directions. Two
+                  criteria agree; the rejection is real. Limit restored.
+                  The constraint strategy did hold the bond (-0.097 A
+                  drift, attempt 2), so the mechanism works even though
+                  this reaction has no saddle to find.
+
+Open: both resolved reactions needed 0.1 A ridge displacement, the
+value that FAILED for them in earlier runs at 0.3 and 0.6 A. The
+earlier two-point displacement pattern does not survive the other
+changes and should not be reported as a finding.
