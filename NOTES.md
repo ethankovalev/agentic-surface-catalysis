@@ -304,3 +304,18 @@ Confirmed: H2_Cu100 re-run at 0.6 A still resolves, 2 attempts, barrier
 0.744 eV (error +0.004 against +0.003 at 0.3 A). The 1 meV difference is
 optimiser path noise. 0.6 A is therefore safe as a single constant for
 both documented ridge cases; no adaptive displacement needed.
+
+## CH4_Ni100: the 0.629 eV saddle is for a different process (2026-09-19)
+refine_saddle_robust finds a first-order saddle at 2.387 A with one
+imaginary mode at 40.6 meV, but connectivity_by_bond_displacement
+returns connects=False: pushing the bond 0.35 A in BOTH directions
+relaxes back to ~2.39 A. It is a minimum along the C-H coordinate, so
+the 40.6 meV mode points along some other motion entirely.
+
+0.629 eV is therefore not the dissociation barrier. The earlier
+"collapse to 1.125 A" reading was wrong - the bond stretched, not
+collapsed. Same conclusion, different cause.
+
+Open: refine_saddle_robust reports first_order_saddle=True here because
+it gates on mode count alone. Connectivity is computed in the probe but
+not used in the accept decision.
