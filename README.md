@@ -433,6 +433,40 @@ entirely like a resolved result. The gate refused it, because
 `check_saddle_connects` had returned a 0.02 Å separation between the two
 displaced and relaxed endpoints, too small to tell forward from backward.
 
+### Saddle recovery
+
+`refine_saddle` makes one attempt from the NEB peak and reports what it gets.
+`refine_saddle_robust` retries, choosing a strategy from how the attempt failed:
+
+| Symptom | Reading | Recovery |
+|---|---|---|
+| zero imaginary modes | the optimiser left the saddle region and fell into a minimum | smaller initial trust radius, so early steps stay local |
+| two or more imaginary modes | a second order saddle: a ridge between two lower symmetry saddles | displace along the **second** imaginary mode, the direction that descends off the ridge |
+| one mode, collapsed geometry | a near intact molecule that still shows a soft mode | treated as basin collapse, same recovery |
+| one mode, fails connectivity | a real saddle, for a different reaction | pin the breaking bond at its starting length, refine, then polish briefly unconstrained |
+
+Acceptance requires **all three** of exactly one imaginary mode, a breaking bond
+still stretched, and connectivity that does not come back false. Each was added
+after a case that passed the others:
+
+- CH4/Ni(100) showed one soft mode on a geometry that had relaxed back to a near
+  intact molecule. Mode count alone accepted it.
+- CH4/Ni(100) later showed one mode on a sane geometry that IRC then rejected as
+  belonging to a different process entirely.
+
+Connectivity is checked with **IRC first**, following the imaginary mode itself,
+with bond displacement as the fallback. IRC will not converge on a near flat
+surface, which is exactly the H2/Pt(111) and H2/Ru(0001) regime, so the fallback
+is not optional. A connectivity result of `None` means unknown and is never
+treated as a failure: an unidentifiable bond must not reject a result that may
+be correct.
+
+One detail taken from sella's source rather than its documentation: IRC caches
+its initial diagonalization and restores it when the direction changes, so the
+**same** object must be run forward then reverse. Constructing a second object
+would repeat the diagonalization and could pick the opposite sign convention,
+silently running the same direction twice and reporting it as two sided.
+
 ### The checks
 
 Every check is designed to work without knowing what the answer should be.
@@ -795,28 +829,49 @@ quarter. Matching SBH10's cell would match their methodology, not the physics
 their reference encodes. Their 2x2 choice was a stated compromise to keep hybrid
 functionals affordable, a constraint this project does not have.
 
-### What the gate caught
+### Saddle recovery: two resolved, two diagnosed
 
-Four seeded reactions produced converged saddles that were refused. All four
-refusals were correct, and the diagnosis differs in each case:
+Four seeded reactions originally produced converged saddles that the gate
+refused. All four refusals were correct. `refine_saddle_robust` then retried
+each with a strategy chosen from the failure mode, and the outcome splits
+cleanly in two.
 
-- **`CH4_Ni100`**: saddle relaxed to a C–H bond of 1.124 Å against a normal
-  1.07 Å, a drift of 0.786 Å from the 1.909 Å seed. It collapsed back to an
-  intact molecule. Not a transition state.
-- **`CH4_Ni111_step`**: saddle relaxed to 2.268 Å; pushing further apart barely
-  moves it and compressing barely recovers. It sits in the **product basin**,
-  not between reactant and product.
+**Resolved, with connectivity confirmed:**
+
+| Reaction | Barrier | Reference | Error | Recovery | Connectivity |
+|---|---:|---:|---:|---|---|
+| H2/Cu(100) | **0.744** | 0.740 | **+0.004** | ridge, 2 attempts | compressed 0.749 Å, stretched 2.584 Å |
+| CH4/Ru(0001) | **1.077** | 0.800 | +0.277 | ridge, 2 attempts | compressed 1.101 Å, stretched 2.700 Å |
+
+H2/Cu(100) at +0.004 eV is the closest single number in the project.
+CH4/Ru(0001) is the more interesting case: it had resisted every previous
+approach, including a site placement hypothesis tested and ruled out, and its
+result predates connectivity being enforced but **holds up under it**. The
+saddle is genuine; UMA simply places it 0.277 eV too high.
+
+**Not resolved, and diagnosed rather than merely failed:**
+
+- **`CH4_Ni100`**: four strategies tried, all fail. Default Sella, smaller trust
+  radius, ridge displacement, and bond constrained refinement. Every attempt
+  that found a single imaginary mode failed connectivity, and drift never fell
+  below +0.35 Å even with the bond explicitly pinned. The best available number
+  stays the unrefined single point at the published geometry, 0.900 eV against
+  0.760, error +0.140, more accurate than anything refinement produced.
+- **`CH4_Ni111_step`**: the drift guard rejected it at +0.507 Å against a 0.5 Å
+  limit, seven thousandths of an Ångström over a constant with no physical
+  derivation. That is too close to accept, so the limit was raised to 0.7 as a
+  diagnostic and IRC then rejected it independently: both ends stopped at 2.61
+  and 2.75 Å, descending to product in **both** directions. Two criteria agree,
+  so the rejection is real and the threshold merely got there first. Limit
+  restored afterwards.
 - **`H2_Pt111`, `H2_Ru0001`**: both references are about zero, genuinely non
-  activated. Sella cannot converge onto a saddle that barely exists, and
-  displacement based connectivity cannot separate forward from backward on a
-  flat surface. An algorithmic limit for this regime, not a defect in the model
-  or the saddle.
-- **`CH4_Ru0001`, `H2_Cu100`**: genuine second imaginary modes, 10 meV and 23
-  meV, stable and reproduced across both dispersion settings and multiple
-  refinement attempts. The 23 meV on Cu(100) is over four times the 5 meV noise
-  threshold. Hypothesis for Cu(100): the hollow to hollow saddle sits on a four
-  fold symmetry axis that UMA's surface treats as a ridge between two lower
-  symmetry saddles. Untested.
+  activated. There is no saddle of consequence to converge onto, and no number
+  of retries invents one. An algorithmic limit for this regime, not a defect.
+
+The distinction matters. "UMA has no first order saddle near the published
+transition state that connects reactant to product" is a statement about the
+model. "Our search did not converge" is a statement about the tooling. Only the
+verification layer makes the first one available.
 
 ### Silent bugs found and fixed
 
@@ -861,6 +916,28 @@ exception. Treat these as the representative failure mode of this whole exercise
   carbon and a hydrogen that *stays in the CH₃ fragment*, reading 1.09 Å in both
   endpoints by definition. Invisible until the orientation fix changed which
   bond breaks.
+- **The drift guard measured a spectator bond.** `_breaking_bond_length` used a
+  finder with an intact molecule cutoff, so at a 1.909 Å stretched seed it could
+  not see the breaking bond at all and returned an untouched 1.09 Å C–H instead.
+  Spectator before against spectator after reads +0.012 Å, which looks
+  reassuring and means nothing. `run_seeded.py`'s own docstring warns about this
+  exact trap. The replacement uses no distance cutoff at all: at a dissociation
+  saddle the breaking bond is by construction the farthest anchor to fragment
+  distance, so any cutoff can only exclude the right answer. A 2.2x reach was
+  tried first and failed the other way, silently returning a spectator once the
+  bond passed 2.354 Å.
+- **The drift was computed and never used.** Every attempt recorded
+  `r_b_drift_A` and the accept decision consulted only the mode count, so a
+  collapsed geometry with one soft mode passed. The original `refine_saddle` has
+  the same blind spot, which is why the first failures were caught by a human
+  reading the drift rather than by code.
+- **Connectivity was computed and never used.** The same shape again, one layer
+  up: the probe printed a connectivity verdict while `first_order_saddle` was
+  still decided without it.
+- **The unconstrained polish undid its own constraint.** After pinning the
+  breaking bond at 1.909 Å, thirty free steps let it run to 3.049 Å. The drift
+  guard would have rejected that, so it failed safe, but the strategy could
+  never have succeeded. Reduced to eight steps, which lands at 1.801 Å.
 - **`_classify_hollow` used the wrong subsurface layer on stepped slabs**,
   comparing a layer against itself and labelling all 34 sites fcc, and returned
   a confident fcc label for four fold hollows where the distinction does not
@@ -914,11 +991,21 @@ agentic-surface-catalysis/
 - **The autonomous sweep is incomplete.** Six validated results out of twenty
   planned reaction and dispersion combinations. The remainder halted on API
   credit exhaustion, not on a technical failure, and the resume path is fixed.
-- **The escalation layer is not built.** Finding 3 shows a disagreement signal
-  exists but the agent does not act on it. Making the agent choose between
-  accepting, retrying and escalating, rather than executing a fixed sequence, is
-  the step from workflow automation to intelligent planning and is the main
-  piece of unfinished agentic work.
+- **The escalation layer is advisory, not autonomous.** `check_run_quality` lets
+  the agent see the same physics assessment `benchmark.py` computes after the
+  run, early enough to act on it inside its retry budget. It is read only by
+  construction: it cannot write to the store, set `validated`, or touch
+  `exit_gate`, so an agent that can read the verdict still cannot optimise
+  against it. What it does **not** do is decide. A binary accept or escalate
+  rule built on the Finding 3 disagreement signal was tested and rejected: under
+  leave one out it scored 4 of 10, worse than the 5 of 10 expected by chance, so
+  the signal is reported as information for a human rather than enforced as a
+  gate. Making that decision autonomous needs more reactions to test against.
+- **The ridge displacement magnitude is not understood.** Both reactions that
+  resolved needed 0.1 Å, the value that had failed for them in earlier runs at
+  0.3 and 0.6 Å. That earlier two point pattern was confounded by the bond
+  finder bug and is not reported as a finding. Untangling it needs a controlled
+  set of runs, not another single test.
 - **eSEN has not been swept.** One of the five registered models remains
   untested, blocked on OMol25 gated access rather than on anything technical.
   The other four are complete on the seeded track for both dispersion settings.
