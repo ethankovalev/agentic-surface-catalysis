@@ -368,3 +368,11 @@ Open: both resolved reactions needed 0.1 A ridge displacement, the
 value that FAILED for them in earlier runs at 0.3 and 0.6 A. The
 earlier two-point displacement pattern does not survive the other
 changes and should not be reported as a finding.
+
+## Correction: the 0.1 A displacement "inconsistency" was a stale label (2026-09-21)
+The strategy text in refine_saddle_robust was a hard-coded string reading
+"retry displaced 0.1 A". The sed edits changed the value actually used
+(0.1 -> 0.3 -> 0.6) but never the label. Every recent run used 0.6 A and
+printed 0.1. There was no inconsistency: H2_Cu100 and CH4_Ru0001 resolved
+at 0.6 A, as the earlier runs showed. The open question logged on
+2026-09-19 is withdrawn.

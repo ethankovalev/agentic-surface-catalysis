@@ -1538,7 +1538,7 @@ def refine_saddle_robust(model_key: str = None, with_d3: bool = True,
             second = modes[1][1]
             displacement = 0.6 * second
             delta0 = None
-            strategy = (f"retry displaced 0.1 A along the second imaginary "
+            strategy = (f"retry displaced 0.6 A along the second imaginary "
                         f"mode ({imag[1]:.1f} meV) after a ridge")
 
     final = attempts[-1]
