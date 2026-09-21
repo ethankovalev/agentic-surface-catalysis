@@ -92,8 +92,10 @@ def check_reaction(reaction_id, spec):
         msg = build_stepped_slab.invoke(
             {"metal": spec["metal"], "facet": spec["facet"]})
     else:
-        msg = build_slab.invoke(
-            {"metal": spec["metal"], "facet": spec["facet"]})
+        args = {"metal": spec["metal"], "facet": spec["facet"]}
+        if spec.get("cell"):
+            args["nx"], args["ny"] = spec["cell"]
+        msg = build_slab.invoke(args)
     add("slab built", not msg.startswith("FAILED"), msg.split(".")[0][:90])
     if msg.startswith("FAILED"):
         return results

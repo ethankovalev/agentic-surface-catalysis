@@ -96,6 +96,11 @@ SBH10 = {
     "CH4_Ni100": {
         "molecule": "CH4", "metal": "Ni", "facet": "100",
         "site_type": "terrace",
+        # At 3x3, no two of Ni(100)'s fourfold hollows avoid sharing a
+        # surface Ni atom, so the dissociated fragments cannot sit on
+        # separate metal atoms and the endpoint builder refuses. 4x4 has
+        # 56 disjoint pairs of 120. See patch_ni100_cell.py.
+        "cell": [4, 4],
         "reaction_class": "dissociation",
         "reference_eV": 0.76,
         "reference_uncertainty_eV": 0.08,
@@ -211,6 +216,15 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
         )
     else:
         site_instruction = " This reaction occurs on a flat terrace surface."
+
+    # Cell size is problem specification, like site_type: it says what to
+    # set up, not what the answer is.
+    cell = spec.get("cell")
+    if cell:
+        site_instruction += (
+            f" Build the slab with nx={cell[0]} and ny={cell[1]}. A smaller "
+            f"cell cannot hold the dissociated fragments on separate metal "
+            f"atoms for this surface, and the endpoint builder will refuse.")
 
     task = (
         f"Compute the dissociation barrier for {spec['molecule']} on "
