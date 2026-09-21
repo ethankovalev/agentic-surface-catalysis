@@ -1,11 +1,13 @@
-# Agentic surface catalysis: a cross model barrier benchmark
+# Agentic surface catalysis: verifying foundation MLIPs on surface reactions
 
 An agent that autonomously builds, relaxes, and computes dissociation barriers on
-transition metal surfaces, then benchmarks **every public foundational MLIP**
-against the same ten experimentally referenced barriers, with dispersion as an
-explicit variable rather than a buried default.
+transition metal surfaces, with a verification layer that refuses any result it
+cannot confirm is physically sound. It benchmarks **every public foundational
+MLIP** against the same ten experimentally referenced barriers, with dispersion
+as an explicit variable rather than a buried default.
 
-The agent is the harness. The result is the comparison.
+Barriers are how the models are measured. Catching structures that are wrong is
+what the verification layer is for, and it is the more important of the two.
 
 ---
 
@@ -28,6 +30,39 @@ That question is not settled. The current best answer from this repository, now
 measured across four models and both dispersion settings, is that **dispersion
 hurts every model tested, and training domain matters more than architecture.**
 See [Current status](#current-status).
+
+## What actually goes wrong
+
+An inaccurate barrier is one failure mode, and the easiest to measure. The more
+dangerous one is a model producing a structure that is physically wrong, with an
+energy that looks reasonable, and no warning. A wrong barrier on a correct
+structure is off by some amount. A wrong structure is not the reaction at all.
+
+This repository has examples of both kinds of wrong structure.
+
+**Produced by a model.** MACE mpa 0, trained on bulk crystals only, places the
+CH₄/Ni(111) step transition state 1.755 eV *below* its own reactant state, a
+physically impossible sign. UMA, on CH₄/Ni(100), converges cleanly to a first
+order saddle with a single imaginary mode at 40.6 meV; pushing the breaking bond
+0.35 Å either way relaxes straight back to 2.39 Å, so the saddle belongs to some
+other motion entirely and its 0.629 eV "barrier" is not this reaction's.
+
+**Produced by the pipeline.** The endpoint builder placed the two N atoms of
+dissociated N₂/Ru(0001) 2.563 Å apart, sharing a surface Ru atom. That is the
+repulsive adjacent site arrangement, not the product minimum, which is reached
+only once the atoms diffuse onto separate metal atoms (Chorkendorff and
+Niemantsverdriet, *Concepts of Modern Catalysis and Kinetics*, section
+6.5.3.2). Earlier, CH₄ went down edge first and broke the wrong C–H bond, giving
+7 eV against a 0.8 eV reference.
+
+Every one of these produced a plausible number and no exception.
+
+**The limit, stated plainly.** The checks here are generic: mode counts,
+connectivity, bond geometry, shared metal atoms, drift. They catch failures that
+look the same on every system. They cannot anticipate a failure specific to one
+chemistry, which only shows up when that system is actually studied. Nothing in
+this repository should be read as a guarantee that an MLIP result is physical;
+only that these particular ways of being unphysical have been ruled out.
 
 ## Where this sits in the field
 
@@ -938,6 +973,21 @@ exception. Treat these as the representative failure mode of this whole exercise
   breaking bond at 1.909 Å, thirty free steps let it run to 3.049 Å. The drift
   guard would have rejected that, so it failed safe, but the strategy could
   never have succeeded. Reduced to eight steps, which lands at 1.801 Å.
+- **Dissociated fragments were placed on a shared metal atom.** The endpoint
+  builder guarded fragment separation with a distance margin, 2.0 times the
+  intact bond, added after two N atoms recombined during relaxation. That margin
+  prevents recombination but says nothing about shared metal atoms, which is the
+  condition that actually matters. All six SBH10 reaction families built
+  endpoints whose fragments shared a surface atom, N₂/Ru(0001) at 2.563 Å. The
+  second fragment's site is now chosen only from sites touching no metal atom the
+  first touches, ranked by coordination for C, N and O. Afterwards N₂/Ru(0001)
+  builds at 3.96 Å with threefold coordination on both sides.
+- **A stale label invented a scientific finding.** The recovery strategy printed
+  "retry displaced 0.1 A" as a fixed string. The value actually used was changed
+  from 0.1 to 0.3 to 0.6 Å by editing the number, and the label never changed.
+  Runs at 0.6 Å reported 0.1 Å, which produced a logged "open question" about why
+  0.1 Å worked where larger values had failed. There was no such effect. The
+  question has been withdrawn.
 - **`_classify_hollow` used the wrong subsurface layer on stepped slabs**,
   comparing a layer against itself and labelling all 34 sites fcc, and returned
   a confident fcc label for four fold hollows where the distinction does not
@@ -1001,11 +1051,6 @@ agentic-surface-catalysis/
   leave one out it scored 4 of 10, worse than the 5 of 10 expected by chance, so
   the signal is reported as information for a human rather than enforced as a
   gate. Making that decision autonomous needs more reactions to test against.
-- **The ridge displacement magnitude is not understood.** Both reactions that
-  resolved needed 0.1 Å, the value that had failed for them in earlier runs at
-  0.3 and 0.6 Å. That earlier two point pattern was confounded by the bond
-  finder bug and is not reported as a finding. Untangling it needs a controlled
-  set of runs, not another single test.
 - **eSEN has not been swept.** One of the five registered models remains
   untested, blocked on OMol25 gated access rather than on anything technical.
   The other four are complete on the seeded track for both dispersion settings.
@@ -1024,11 +1069,14 @@ agentic-surface-catalysis/
   `path_resolved`: at default image counts a single image to image step carries
   up to 89% of the climb, so the reported barrier is a lower bound on a
   transition state that was never sampled.
-- **`CH4_Ru0001` is unresolved on UMA, cause narrowed but not found.** The
-  dissociated endpoint is not a genuine local minimum: re relaxing `final.traj`
-  independently drifts the departed H from 3.96 Å back to 0.03 Å, near complete
-  recombination. The fcc against hcp site hypothesis was tested and ruled out.
-  MACE resolves the same reaction cleanly, so this is specific to UMA's surface.
+- **`CH4_Ru0001` is resolved on the seeded track but not the autonomous one.**
+  On the seeded track UMA now gives a confirmed first order saddle at 1.077 eV,
+  with connectivity checked. The autonomous failure was a dissociated endpoint
+  that was not a genuine minimum: the departed H drifted from 3.96 Å back to
+  0.03 Å on re relaxation. That was observed before fragments were kept off
+  shared metal atoms, and near complete recombination is what a shared metal
+  arrangement would be expected to produce. Whether the site selection fix
+  resolves it has not been tested.
 - **`check_saddle_connects` fails on stepped geometries.** On `CH4_Ni111_step`
   the displaced and relaxed endpoints differed by 0.02 Å, too little to
   distinguish. The displacement magnitude is probably too small for a C–H bond
@@ -1037,9 +1085,29 @@ agentic-surface-catalysis/
   CH₄/Ru(0001) are experiment only in SBH17's Table 2, blank in every geometry
   column. The seeded track still evaluates them from the SBH10 SI POSCARs, but
   there is no independent geometry to cross check against.
-- **The Cu(100) symmetry hypothesis is untested.** A small symmetry breaking
-  displacement before `refine_saddle` would test whether the 23 meV second mode
-  resolves to a genuine nearby first order saddle.
+- **The endpoint fix is verified on geometry only.** Fragments now build on
+  separate metal atoms for five of six reaction families, checked by inspecting
+  the structures written to disk. None has yet been relaxed, run through a NEB,
+  or compared against a barrier. It fixes the starting state; whether it
+  improves any result is untested.
+- **CH₄/Ni(100) cannot hold its dissociated state in a 3x3 cell.** Ni(100) at
+  3x3 has nine fourfold hollows, each touching four of nine surface atoms, and no
+  pair of them shares zero metal atoms. The builder now raises rather than
+  building the repulsive arrangement. At 4x4, 56 of 120 site pairs are disjoint
+  and the endpoint builds at 5.01 Å. The autonomous track needs a larger cell for
+  this reaction.
+- **The endpoint builder still reports the wrong separation.** Its success
+  message prints the separation aimed for before fragments are snapped onto real
+  hollows, not the one built. N₂/Ru(0001) reported 5.42 Å while the structure
+  written to disk had 2.563 Å. Anyone reading only the log would not have seen
+  the shared metal problem. Not yet fixed.
+- **Only hollow sites are enumerated.** Atomic C, N and O are well served by
+  that, since the literature puts them firmly in hollows (C on Fe(100): ontop
+  2.92 eV and bridge 1.48 eV above hollow; Bromfield, Curulla Ferré and
+  Niemantsverdriet, *ChemPhysChem* 2005). H and CH₃ are not. Methyl prefers top
+  sites on Pt, Pd, Au and Ag (Wang et al., *J. Comput. Chem.* 2005), and H on
+  Pt(111) is nearly degenerate across all sites. Bridge and top sites are not
+  generated at all, so neither can be evaluated.
 - **No site or orientation sampling in the autonomous track.** One configuration
   per reaction, so the reported barrier is not a minimum over configuration
   space. `probe_site_fix.py` demonstrates the blind approach on one reaction but
