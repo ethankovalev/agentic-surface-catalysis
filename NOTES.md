@@ -376,3 +376,20 @@ The strategy text in refine_saddle_robust was a hard-coded string reading
 printed 0.1. There was no inconsistency: H2_Cu100 and CH4_Ru0001 resolved
 at 0.6 A, as the earlier runs showed. The open question logged on
 2026-09-19 is withdrawn.
+
+## Structural verification pass (2026-09-21)
+Prompted by feedback that unphysical structures, not barrier error, are
+the larger MLIP failure mode.
+
+Endpoint builder: fragments now placed on separate surface metal atoms
+(Chorkendorff and Niemantsverdriet 6.5.3.2). All six families previously
+shared a metal atom. Verified on built geometries only; nothing has been
+relaxed or run through a NEB since.
+
+Structural checks: desorption, fused atoms, damaged slab. False positive
+test: 10/10 published SBH10 transition states pass. A height-based
+extraction test flagged the vicinal N2/Ru(0001) step cell; replaced with
+a coordination test.
+
+CH4_Ni100 moved to 4x4 (3x3 has 0 of 36 disjoint site pairs). Coverage
+now 1/16 ML against 1/9 for every other reaction; equivalence untested.
