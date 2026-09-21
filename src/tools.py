@@ -697,6 +697,39 @@ def _wrap_to_nearest_image(atoms, group, reference_xy):
     return atoms
 
 
+# Atoms whose binding is dominated by coordination number, so that the
+# highest-coordination site available is the right default. See the
+# module docstring of patch_site_selection.py for the sources.
+COORDINATION_DRIVEN = {"C", "N", "O"}
+
+
+def _surface_layer(atoms, metal):
+    """Indices of the topmost metal layer."""
+    if not metal:
+        return []
+    top_z = max(atoms.positions[i, 2] for i in metal)
+    return [i for i in metal if atoms.positions[i, 2] > top_z - 0.5]
+
+
+def _site_metal_neighbours(atoms, xy, z, surface, cutoff=2.8):
+    """Which surface metal atoms a site at (xy, z) would touch.
+
+    Distances are taken in the plane with the minimum image convention,
+    because a site near a cell edge is adjacent to atoms on the far side.
+    """
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+    found = set()
+    for i in surface:
+        d = (np.asarray(xy) - atoms.positions[i, :2]) @ inv2
+        d -= np.round(d)
+        lateral = np.linalg.norm(d @ cell2)
+        dz = abs(z - atoms.positions[i, 2])
+        if np.hypot(lateral, dz) < cutoff:
+            found.add(i)
+    return found
+
+
 @tool
 def build_dissociated_endpoint(separation: float = None,
                                height: float = None) -> str:
@@ -870,6 +903,45 @@ def build_dissociated_endpoint(separation: float = None,
                     # hollows - on Ru(0001) two N atoms separated to
                     # 3.97 A ended up 1.91 A apart after snapping and
                     # recombined into N2 during relaxation.
+                    # Sites that share no surface metal atom with the
+                    # first fragment. Adjacent threefold sites touching
+                    # one metal atom are the repulsive arrangement, not
+                    # the product minimum (Chorkendorff and
+                    # Niemantsverdriet 6.5.3.2). Before this filter, all
+                    # six SBH10 reaction families built endpoints that
+                    # shared an atom.
+                    surface = _surface_layer(atoms, metal)
+                    first_nbrs = _site_metal_neighbours(
+                        atoms, sites[used[0]][0], sites[used[0]][1], surface)
+                    disjoint = [
+                        n for n in free
+                        if not (_site_metal_neighbours(
+                            atoms, sites[n][0], sites[n][1], surface)
+                            & first_nbrs)]
+                    if not disjoint:
+                        raise ValueError(
+                            f"no site for the second fragment shares zero "
+                            f"surface metal atoms with the first. Every "
+                            f"available site would give the repulsive "
+                            f"adjacent arrangement rather than the product "
+                            f"minimum. The cell is too small to hold the "
+                            f"dissociated state; widen it.")
+
+                    # Among those, prefer high coordination for atoms whose
+                    # binding is coordination driven. H and CH3 are left to
+                    # distance alone: the preferred site for those depends
+                    # on the metal, and this module has no per-metal data.
+                    anchor_sym = atoms[anchor].symbol
+                    if anchor_sym in COORDINATION_DRIVEN:
+                        disjoint.sort(
+                            key=lambda n: (
+                                -len(_site_metal_neighbours(
+                                    atoms, sites[n][0], sites[n][1], surface)),
+                                _mic_xy(sites[n][0], first_xy, cell2, inv2)))
+                        free = disjoint
+                    else:
+                        free = disjoint
+
                     by_distance = sorted(
                         free, key=lambda n: _mic_xy(sites[n][0], first_xy, cell2, inv2))
                     best_n = next(
