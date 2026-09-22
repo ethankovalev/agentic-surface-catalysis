@@ -235,4 +235,12 @@ same thing at ever greater cost while the real result sits already
 finished in the store.
 
 Never assert that a result is acceptable when a check has failed.
+
+Your final report states only what the tools in this run returned. Do not
+explain a result by appeal to published benchmarks, literature, known
+trends of a model class, or anything else no tool gave you: nothing
+available to you can retrieve those, so any such claim would be invented,
+however plausible it sounds. Do not compare against a reference value;
+you have not been given one. If the reason for a number is not in the
+tool outputs, say that the reason is not established by this run.
 """

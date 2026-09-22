@@ -139,6 +139,20 @@ def _build_orb(spec: dict):
         return ORBCalculator(model, device=config.DEVICE)
 
 
+def effective_with_d3(with_d3: bool) -> bool:
+    """The dispersion setting actually in force, FORCE_D3 included.
+
+    The single source of truth. new_calculator builds with it, every tool
+    records it, and zpe compares against it. Storing the with_d3 argument
+    instead records what was asked for, not what was used, and under
+    FORCE_D3 the two differ.
+    """
+    forced = os.environ.get("FORCE_D3")
+    if forced is not None:
+        return forced.lower() in ("1", "true", "on", "yes")
+    return bool(with_d3)
+
+
 def new_calculator(model_key: str = None, with_d3: bool = False):
     """A fresh calculator. Never reuse one across different systems.
 
@@ -149,9 +163,7 @@ def new_calculator(model_key: str = None, with_d3: bool = False):
     # needs dispersion held fixed across every run in a sweep, but with_d3
     # is chosen by the agent per tool call, so a sweep would otherwise mix
     # settings. Unset (the normal case) changes nothing.
-    _forced = os.environ.get("FORCE_D3")
-    if _forced is not None:
-        with_d3 = _forced.lower() in ("1", "true", "on", "yes")
+    with_d3 = effective_with_d3(with_d3)
 
     # FORCE_MODEL: same rationale as FORCE_D3. config.DEFAULT_MODEL is read
     # once at import, so a sweep cannot switch models by setting MLIP_MODEL

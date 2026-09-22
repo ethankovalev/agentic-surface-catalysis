@@ -95,7 +95,7 @@ from langchain_core.tools import tool
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import config
 from src import store
-from src.calculators import new_calculator
+from src.calculators import effective_with_d3, new_calculator
 
 
 # --- thresholds -------------------------------------------------------
@@ -320,7 +320,7 @@ def compute_zpe_correction(model_key: str = None, with_d3: bool = True,
     # live on different surfaces. The store knows what the band actually
     # used; trust that over what the agent passed in.
     neb = store.get("neb") or {}
-    if "with_d3" in neb and bool(neb["with_d3"]) != bool(with_d3):
+    if "with_d3" in neb and bool(neb["with_d3"]) != effective_with_d3(with_d3):
         return (f"FAILED: the barrier was computed with d3={neb['with_d3']} "
                 f"but this call passes with_d3={with_d3}. A zero-point "
                 "correction from a different surface than the barrier is not "
@@ -378,7 +378,7 @@ def compute_zpe_correction(model_key: str = None, with_d3: bool = True,
         "gas_linear": bool(linear),
         "gas_free_modes_dropped_eV": [float(x) for x in gas_dropped],
         "model_key": model_key,
-        "with_d3": bool(with_d3),
+        "with_d3": effective_with_d3(with_d3),
         "delta_A": VIB_DELTA,
     }
     store.put("zpe", record)
