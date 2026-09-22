@@ -71,10 +71,45 @@ def _tag(atoms, n_metal):
 
 # Structure tools
 
+def _work_already_done():
+    """What the store holds that a rebuild would throw away.
+
+    Returns a list of plain descriptions, empty when there is nothing to
+    lose. Used by the three builder tools so that rebuilding over a
+    finished calculation has to be deliberate.
+    """
+    done = []
+    for key, label in (("initial_relaxed", "a relaxed initial state"),
+                       ("final_relaxed", "a relaxed final state"),
+                       ("saddle", "a refined saddle"),
+                       ("barrier_eV", "a computed barrier")):
+        value = store.get(key)
+        if value is not None:
+            done.append(label)
+    return done
+
+
+def _refuse_rebuild(tool_name, force):
+    """None if the rebuild may proceed, else the refusal to return."""
+    if force:
+        return None
+    done = _work_already_done()
+    if not done:
+        return None
+    return (
+        f"REFUSED: {tool_name} would rebuild the system, but this run already "
+        f"has {', '.join(done)}. Rebuilding discards all of it and starts the "
+        f"calculation again, which is how a run exhausts its turns without "
+        f"finishing. Call read_results to see what exists, and continue from "
+        f"there. If the existing work really is unusable, say why and call "
+        f"this tool again with force=True.")
+
+
 @tool
 def build_slab(metal: str, facet: str = "111", nx: int = 3, ny: int = 3,
                layers: int = 4, vacuum: float = 10.0,
-               dopant: str = "none", n_fixed_layers: int = 2) -> str:
+               dopant: str = "none", n_fixed_layers: int = 2,
+               force: bool = False) -> str:
     """Build a clean or doped transition metal slab and save it.
 
     metal: chemical symbol, e.g. "Cu", "Ni", "Ru", "Pt", "Pd".
@@ -87,6 +122,10 @@ def build_slab(metal: str, facet: str = "111", nx: int = 3, ny: int = 3,
 
     Saves work/slab.traj and returns a short description.
     """
+    refusal = _refuse_rebuild("build_slab", force)
+    if refusal:
+        return refusal
+
     if facet not in BUILDERS:
         return f"FAILED: unknown facet {facet}. Use one of {list(BUILDERS)}."
 
@@ -553,7 +592,8 @@ def _orient_for_dissociation(ads):
 
 @tool
 def place_adsorbate(species: str, height: float = 2.5,
-                    site: str = "ontop", overhang: float = 0.5) -> str:
+                    site: str = "ontop", overhang: float = 0.5,
+                    force: bool = False) -> str:
     """Place a molecule above the slab and save the combined system.
 
     species: ASE g2-database name, e.g. "H2", "N2", "CH4", "O2", "CO".
@@ -573,6 +613,10 @@ def place_adsorbate(species: str, height: float = 2.5,
     which atoms form the edge. Reads work/slab.traj, saves
     work/initial.traj.
     """
+    refusal = _refuse_rebuild("place_adsorbate", force)
+    if refusal:
+        return refusal
+
     if site not in ("ontop", "bridge", "hollow", "step"):
         return (f"FAILED: unknown site '{site}'. Use ontop, bridge, hollow "
                 "or step. An unrecognised name must not fall back to a "
@@ -732,7 +776,8 @@ def _site_metal_neighbours(atoms, xy, z, surface, cutoff=2.8):
 
 @tool
 def build_dissociated_endpoint(separation: float = None,
-                               height: float = None) -> str:
+                               height: float = None,
+                               force: bool = False) -> str:
     """Build the dissociated final state by pulling the molecule apart.
 
     separation, height: leave as None to derive from the covalent radii
@@ -745,6 +790,10 @@ def build_dissociated_endpoint(separation: float = None,
     is which local minimum you fall into, so a fragment can still end
     up at an atop site when a hollow site is more stable.
     """
+    refusal = _refuse_rebuild("build_dissociated_endpoint", force)
+    if refusal:
+        return refusal
+
     init_file = Path(_path("initial.traj"))
     if not init_file.exists():
         return "FAILED: no initial.traj. Call place_adsorbate first."

@@ -132,6 +132,13 @@ _LEAK_CUES = (
     "sbh10", "reference", "experimental", "experiment", "literature",
     "known", "reported", "published", "expected", "should be", "accepted",
     "benchmark value", "true value", "actual value",
+    # Comparison phrasing. A number matching a dataset reference beside one
+    # of these was recalled, not computed: on 2026-09-22 a report said its
+    # barrier was "nowhere near the ~0.40 eV step-site value", quoting the
+    # reference for a different reaction, and no cue above appears in it.
+    "nowhere near", "compared to", "compared with", "versus", " vs ",
+    "far from the", "close to the", "step-site", "step site",
+    "terrace value", "regime",
 )
 _NUM_eV = re.compile(r"(-?\d+\.\d+|-?\d+)\s*(?:eV|ev)\b")
 _LEAK_TOL = 0.08          # absolute eV, or fractional, whichever is larger
@@ -153,7 +160,7 @@ def _message_text(message) -> str:
     return str(content)
 
 
-def scan_for_reference_leak(messages, reference_eV):
+def scan_for_reference_leak(messages, reference_eV, others=None):
     """Find the experimental value in what the agents said to each other.
 
     The reference table is unreachable from every tool, so the pipeline is
@@ -172,9 +179,20 @@ def scan_for_reference_leak(messages, reference_eV):
 
     Runs after the graph returns, so it cannot itself affect the calculation.
     """
-    if reference_eV is None:
+    # Every reference in the set, not just this reaction's. The model has
+    # read SBH10; quoting any of its numbers shows recall, whichever
+    # reaction it belongs to.
+    targets = []
+    if reference_eV is not None:
+        targets.append(("this reaction", float(reference_eV)))
+    for name, value in (others or {}).items():
+        if value is None or name == "this reaction":
+            continue
+        if reference_eV is not None and abs(float(value) - reference_eV) < 1e-9:
+            continue
+        targets.append((name, float(value)))
+    if not targets:
         return []
-    tol = max(_LEAK_TOL, abs(reference_eV) * _LEAK_TOL)
     hits = []
     for i, message in enumerate(messages or []):
         body = _message_text(message)
@@ -186,7 +204,13 @@ def scan_for_reference_leak(messages, reference_eV):
                 value = float(match.group(1))
             except ValueError:
                 continue
-            if abs(value - reference_eV) > tol:
+            matched = None
+            for name, target in targets:
+                tol = max(_LEAK_TOL, abs(target) * _LEAK_TOL)
+                if abs(value - target) <= tol:
+                    matched = name
+                    break
+            if matched is None:
                 continue
             a = max(0, match.start() - 120)
             b = min(len(body), match.end() + 60)
@@ -198,6 +222,7 @@ def scan_for_reference_leak(messages, reference_eV):
                 "speaker": getattr(message, "name", None)
                            or type(message).__name__,
                 "value_eV": value,
+                "matched_reaction": matched,
                 "cue": cue,
                 "snippet": " ".join(body[a:b].split())[:200],
             })
@@ -250,7 +275,9 @@ def run_one(graph, reaction_id: str, spec: dict) -> dict:
         )
         computed = store.get("barrier_eV")
         leaks = scan_for_reference_leak(
-            (final_state or {}).get("messages"), spec.get("reference_eV"))
+            (final_state or {}).get("messages"), spec.get("reference_eV"),
+            others={name: entry.get("reference_eV")
+                    for name, entry in SBH10.items() if name != reaction_id})
     except Exception as exc:
         error_note = f"{type(exc).__name__}: {exc}"
         print(f"  run failed: {error_note}")
