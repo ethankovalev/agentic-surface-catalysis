@@ -1109,64 +1109,99 @@ exception. Treat these as the representative failure mode of this whole exercise
 
 ---
 
-## Project layout
+## The pipeline
 
-```text
-agentic-surface-catalysis/
-├── README.md
-├── NOTES.md                        # running log of findings and open questions
-├── CLAUDE.md                       # working rules and invariants for AI assistants
-├── LICENSE                         # GNU GPL v3
-├── config.py                       # model registry, thresholds, REQUIRED_CHECKS
-├── invoke.py                       # entry point, single reaction
-├── build_seeds.py                  # SBH10 SI POSCARs to tagged, validated ASE
-├── reorganise_repo.py              # record of the 2026-09-23 layout change
-├── requirements.txt                # UMA environment
-├── requirements-mace.txt           # MACE and Orb environment
-├── analysis/
-│   ├── plot_seeded_results.py      # headline figure, no GPU
-│   ├── analyse_disagreement.py     # Finding 3, disagreement against error
-│   ├── escalate.py                 # leave one out test of an escalation rule
-│   ├── results_seeded_summary.md   # per reaction seeded tables
-│   └── seeded_d3_comparison.png    # headline figure
-├── data/                           # checkpoints and HF cache (gitignored)
-├── data_sbh10_si/
-│   ├── poscars.txt                 # transcribed SBH10 SI transition states
-│   └── expected_manifest.json      # validation record for the above
-├── patches/                        # applied source edits, kept as the record
-│   ├── README.md                   # what they are and how to check them
-│   └── patch_*.py                  # one per fix, each explaining its evidence
-├── work_seeds/                     # generated seed structures (gitignored)
-├── scripts/
-│   ├── run_grid.py                 # agent sweep, resumable
-│   ├── run_seeded.py               # seeded track: published TS to barrier
-│   ├── run_blind.py                # blind scripted track, no LLM
-│   ├── compare_tracks.py           # every track side by side
-│   ├── diagnose_run.py             # why an agent run ended, unsourced claims
-│   ├── check_structures.py         # geometry pre flight, no GPU
-│   ├── test_endpoints.py           # endpoint construction checks, all reactions
-│   ├── cell_test.py                # controlled cell sensitivity test
-│   ├── probe_robust_saddle.py      # saddle recovery against one reaction
-│   ├── probe_site_fix.py           # blind fcc against hcp comparison
-│   ├── compare_site_geometries.py  # geometry diff of two relaxed endpoints
-│   └── save_seeded_summary.py      # writes SEEDED_SUMMARY.md
-├── tests/
-│   ├── test_day1.py                # bond selection and ZPE bookkeeping
-│   ├── test_escalation.py          # escalation logic and its tool wrapper
-│   ├── test_neb_cap.py             # run_neb attempt cap
-│   └── test_saddle_refinement.py   # Sella saddle refinement
-└── src/
-    ├── __init__.py
-    ├── agent.py                    # builds the three agents
-    ├── benchmark.py                # SBH10 references, leak scan, tool unreachable
-    ├── calculators.py              # model backends, dispersion, effective_with_d3
-    ├── escalation.py               # run quality assessment
-    ├── graph.py                    # supervisor routing and the exit gate
-    ├── prompt.py                   # the three agent prompts
-    ├── store.py                    # run state and check results
-    ├── tools.py                    # structure, simulation and validation tools
-    └── zpe.py                      # zero point correction and its validator
+```mermaid
+flowchart TD
+    subgraph ENTRY["Three ways in"]
+        SEED["Seeded track<br/>starts from the published SBH10 transition state"]
+        BLIND["Blind scripted track<br/>fixed order, no language model"]
+        AGENT["Agent track<br/>supervisor and three agents choose the order"]
+    end
+
+    subgraph BUILD["1. Build, from scratch"]
+        SLAB["Slab<br/>terrace or step, cell size from the spec"]
+        PLACE["Place the molecule<br/>breaking bond turned toward the surface"]
+        ENDPT["Dissociated endpoint<br/>fragments on separate metal atoms"]
+    end
+
+    subgraph RELAX["2. Relax the endpoints"]
+        ENDS["Relax initial and final states"]
+        GAS["Gas reference<br/>the free molecule, same slab"]
+        MINS["Check both endpoints are minima"]
+    end
+
+    subgraph BAND["3. Find the path"]
+        NEB["Climbing image NEB"]
+        CONV{"Band converged?"}
+        NEB2["One finer band"]
+    end
+
+    subgraph SADDLE["4. Converge on the saddle"]
+        REF["Refine each band peak with Sella"]
+        OK{"Exactly one imaginary mode,<br/>breaking bond still stretched,<br/>connects reactant to product?"}
+        FIX["Recover by failure type<br/>ridge: step along the second mode<br/>collapse: smaller trust radius<br/>wrong reaction: pin the breaking bond"]
+        LOW["Keep the lowest connected saddle"]
+    end
+
+    subgraph ENERGY["5. The barrier"]
+        BAR["Gas referenced barrier<br/>measured from the free molecule"]
+        ZPE["Zero point correction"]
+    end
+
+    subgraph CHECK["6. Verification"]
+        CHK["Eleven physics checks<br/>plus structural sanity"]
+        GATE{"Every check passed?"}
+        YES["Validated barrier"]
+        NO["Refused, with the reasons"]
+    end
+
+    SCORE["Scored against the SBH10 reference<br/>only after the run has finished"]
+
+    BLIND --> SLAB
+    AGENT --> SLAB
+    SLAB --> PLACE --> ENDPT --> ENDS --> GAS --> MINS --> NEB --> CONV
+    CONV -- no --> NEB2 --> REF
+    CONV -- yes --> REF
+    SEED --> REF
+    REF --> OK
+    OK -- no --> FIX --> REF
+    OK -- yes --> LOW --> BAR --> ZPE --> CHK --> GATE
+    GATE -- yes --> YES --> SCORE
+    GATE -- no --> NO
+    ENDS -. structural sanity after every relaxation .-> CHK
 ```
+
+Every track uses the same tools. The seeded track skips building and the band,
+because it starts from the published saddle; it also reports a single point at
+that geometry with nothing moved, which exists for every reaction whether or not
+refinement succeeds. The blind scripted track runs the steps in the order shown,
+including two parts that are its own policy rather than the tools': a second,
+finer band when the first does not converge, and keeping the lowest connected
+saddle when more than one band peak refines to one. The agent track reaches the
+same tools through a supervisor and three agents, which decide the order
+themselves; it may also run a second band, but it refines one peak at a time.
+In every track the exit gate, or its scripted equivalent, refuses a result until
+every required check has passed.
+
+Nothing before the final box sees the reference barrier. The tools cannot reach
+`src/benchmark.py`, and the comparison is made by the runner after the run
+returns.
+
+**Where things live**
+
+| Folder | Contents |
+|---|---|
+| `src/` | the tools, agents, prompts, supervisor graph and exit gate |
+| `scripts/` | the runners for each track, pre flight checks, probes and comparisons |
+| `tests/` | CPU only regression tests |
+| `analysis/` | the headline figure, seeded summary tables and the disagreement analysis |
+| `patches/` | every source edit, each explaining the bug it fixed and the evidence |
+| `data_sbh10_si/` | the transcribed SBH10 transition states and their validation record |
+
+At the root: `config.py` (model registry, thresholds, required checks),
+`invoke.py` (single reaction entry point), `build_seeds.py` (SBH10 structures to
+ASE), `NOTES.md` (running log), `CLAUDE.md` (working rules) and the licence.
 
 ## What is not finished
 
