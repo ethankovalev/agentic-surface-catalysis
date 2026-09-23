@@ -466,7 +466,10 @@ This is not hypothetical. On 2026-09-14 the agent produced a polished final
 report for `CH4_Ni111_step`, headline barrier bolded, caveats listed, reading
 entirely like a resolved result. The gate refused it, because
 `check_saddle_connects` had returned a 0.02 Å separation between the two
-displaced and relaxed endpoints, too small to tell forward from backward.
+displaced and relaxed endpoints, too small to tell forward from backward. The
+refusal was right, but its stated reason was later traced to a measurement bug:
+for CH₄ the tool compared the carbon with a hydrogen that stays attached, so
+both endpoints read about 1.09 Å. See the bug list.
 
 ### Saddle recovery
 
@@ -540,12 +543,25 @@ at a terrace or a step is part of the problem specification, not the answer, so
 `N2_Ru0001_step` and `N2_Ru0001_terrace` sent byte identical instructions while
 being scored against references 1.44 eV apart.
 
-The same reasoning is why `SBH10_PREFERRED_SITE`, which encodes Table S1's final
-adsorption sites, is **not** wired into the autonomous pipeline. A final state
-site taken from the reference calculation is much closer to the answer than a
-terrace or step label is. Where site choice needs testing, the blind approach is
-to build both candidates and let the model's own energy decide, which is what
+A table of Table S1's final adsorption sites, with an fcc against hcp hollow
+classifier, was prototyped in `patches/patch_fcc_hcp_sites.py` and
+`patches/patch_fcc_hcp_v2.py` and applied on the GPU pod for the CH₄/Ru(0001)
+site experiment. **Neither patch is applied to the code in this repository.** A
+final state site taken from the reference calculation is much closer to the
+answer than a terrace or step label is, so it should not enter the autonomous
+pipeline in any case. Where site choice needs testing, the blind approach is to
+build both candidates and let the model's own energy decide, which is what
 `scripts/probe_site_fix.py` does.
+
+**The agent has seen SBH10.** On 2026-09-22 a validated N₂/Ru(0001) terrace
+report said its barrier was "nowhere near the ~0.40 eV step-site value". 0.40 eV
+is the SBH10 reference for a different reaction, `N2_Ru0001_step`. No tool
+supplied it; the language model recalled it from training. The leak scan now
+checks every SBH10 reference and comparison phrasing, not only the current
+reaction's value, so quoting is detected. Silent use of a recalled value cannot
+be detected by any scan. Evaluation of the agent track is therefore weaker than
+"the agent never sees the reference" implies. The blind scripted track below
+uses no language model and is unaffected.
 
 **The seeded track is not blind, by construction**, and nothing in it may be
 described as if it were. It reads a published transition state. That is the
@@ -634,8 +650,9 @@ because it is a different potential energy surface.
 ## Current status
 
 **Seeded track complete for four models across both dispersion settings, 80
-barrier evaluations with no gaps. Autonomous track partially complete.** eSEN
-pending gated access.
+barrier evaluations with no gaps. Blind scripted track: 6 of 10 reactions
+validated for UMA with dispersion off, with further fixes committed but not yet
+rerun. Autonomous agent track partially complete.** eSEN pending gated access.
 
 ### Headline
 
@@ -839,6 +856,67 @@ measurement of 1.111 eV for the same model and dispersion setting, from a
 completely different starting geometry. The gate refused it on convergence
 grounds, but the physics agrees with itself.
 
+**Five of the six validated rows above are D3 off, and their dispersion check
+passed for the wrong reason.** `check_dispersion_consistent` required every
+stage to record D3 **on**, and under `FORCE_D3=off` every record stored the
+agent's argument, which defaults to on, rather than the setting in force. The
+two bugs cancelled. The energies are sound, because every stage genuinely ran
+without dispersion, but the check did not establish that. Both are fixed.
+
+After the fixes, two reactions were rerun through the agent on 2026-09-22.
+N₂/Ru(0001) terrace validated at 1.411 eV. H₂/Cu(111) did not: the agent made 67
+tool calls, rebuilt the whole system from scratch four times after finishing a
+calculation, and ran out of supervisor turns. The builder tools now refuse to
+rebuild over finished work unless told to explicitly.
+
+### Blind scripted track
+
+`scripts/run_blind.py` runs every reaction through the same tools the agent
+uses, in a fixed order, with no language model. Every structure is built from
+scratch, no published geometry is read, and the reference is never used. It is
+**not** the agent track, is written to its own directory, and is never pooled
+with agent results. Its purpose is to separate two questions: whether the tools
+can find a validated barrier blind, and whether the agent calls them in a way
+that does.
+
+UMA S 1.1, dispersion off, 2026-09-23:
+
+| Reaction | Blind | Reference | Error | Validated | Notes |
+|---|---:|---:|---:|---|---|
+| H2_Cu111 | 0.745 | 0.63 | +0.115 | yes | |
+| H2_Cu100 | 0.687 | 0.74 | −0.053 | yes | |
+| H2_Pt111 | 0.232 | 0.00 | +0.232 | yes | |
+| N2_Ru0001_terrace | 1.704 | 1.84 | −0.136 | yes | higher of two connected saddles, see below |
+| CH4_Ru0001 | 0.962 | 0.80 | +0.162 | yes | first validation on any track |
+| CH4_Ni111_terrace | 0.940 | 1.01 | −0.070 | yes | |
+| H2_Ru0001 | −0.275 | 0.00 | | no | non activated: band peak at image 1, 18 meV |
+| N2_Ru0001_step | 0.982 | 0.40 | | no | only failure: well depth −0.011 eV |
+| CH4_Ni100 | 2.613 | 0.76 | | no | CH₃ desorbed at the saddle, correctly refused |
+| CH4_Ni111_step | 0.740 | 0.80 | | no | no saddle found near a converged peak |
+
+Barriers in eV. Two unchanged reactions reproduced to within 1 meV across
+independent blind runs (H2_Cu100 0.688 and 0.687; H2_Pt111 0.232 twice), and
+blind and agent agree to within 1 meV where both validated a first saddle.
+
+**N₂/Ru(0001) terrace has two connected saddles, 1.411 and 1.739 eV.** The
+policy used here refined only the last band's peak and took the higher one.
+The lower connected saddle sets the rate, and choosing between saddles by
+proximity to a reference the pipeline never sees is not allowed. `run_blind.py`
+now refines every plausible band peak and keeps the lowest connected saddle. That
+is expected to move this result back toward 1.41 eV, further from the reference.
+**This has not yet been rerun**, and neither has the well depth tolerance that
+should validate N₂/Ru(0001) step. The numbers above are the last completed run.
+
+No CH₄ result validated before 2026-09-23 had passed a working connectivity check:
+the check measured a spectator C–H and refused on every CH₄ reaction before
+storing a verdict. The two CH₄ rows above are the first to pass one.
+
+A comparison of mean error for runs whose structures were flagged against runs
+whose structures were clean is printed by `scripts/compare_tracks.py`. It is not
+reported here. The flagged group holds two reactions, one of them flagged only
+because a near zero barrier came out slightly negative, so it is one genuine
+data point, not a test.
+
 ### Cell sensitivity
 
 The seeded track runs in SBH10's cell (2x2x6, quarter monolayer); the autonomous
@@ -991,7 +1069,43 @@ exception. Treat these as the representative failure mode of this whole exercise
 - **`_classify_hollow` used the wrong subsurface layer on stepped slabs**,
   comparing a layer against itself and labelling all 34 sites fcc, and returned
   a confident fcc label for four fold hollows where the distinction does not
-  exist at all.
+  exist at all. Found and fixed in the site preference prototype, which is not
+  applied to this repository's code.
+- **The dispersion consistency check tested that D3 was on, not consistent.**
+  `set(values) == {True}` failed every consistent D3 off run. It went unnoticed
+  because a second bug made every record claim D3 was on. Five validated D3 off
+  agent results passed it that way.
+- **Two more checks penalised deliberate D3 off runs.** The same far physisorbed
+  contact passed with D3 on and failed with D3 off, and an initial state desorption
+  limit did the same. For a barrier referenced to the free molecule, an initial
+  state drifted outward is already close to the reference, so neither bears on
+  the scored number once the gas referenced barrier exists.
+- **The subsurface check flagged every adsorbate atom on stepped slabs.** It
+  compared heights against the highest metal atom, and a stepped slab is a
+  staircase. Atoms with three metal neighbours at 1.9 to 2.1 Å, textbook hollow
+  binding, were called buried. It now asks whether an atom is surrounded by
+  metal or sitting on it, which does not depend on cell orientation. All ten
+  published transition states pass, and a genuinely buried H is still caught.
+- **`check_saddle_connects` measured a spectator bond for CH₄**, the first two
+  adsorbate atoms by index, and **classified results against a midpoint that
+  moved with the final state.** When fragments were moved onto separate metal
+  atoms, the H₂/Cu(111) final state moved to 4.42 Å and the midpoint to 2.59 Å,
+  past the correctly dissociated 2.02 Å product, and a correct saddle was
+  refused. Both connectivity tests now judge each side against the intact bond
+  measured in the initial state.
+- **The intact H–H bond was taken as a covalent radius sum**, 0.62 Å against a
+  real 0.74 Å, leaving almost no room for a molecular end to count as recombined.
+- **The agent rebuilt over finished work until it ran out of turns.** The prompt
+  already warned against this. The builder tools now refuse unless told to
+  rebuild explicitly.
+- **The leak scan looked for one number.** It checked only the current
+  reaction's reference, so an agent quoting a different reaction's reference
+  from memory passed.
+- **The validation agent invented supporting evidence**, calling an error
+  "consistent with published benchmarks for this model class". No tool can
+  retrieve literature. Its prompt now forbids citing anything no tool returned.
+- **A negative well depth of −0.011 eV failed a reaction**, where D3 off wells are
+  a few meV and UMA resolves about 0.05 eV. The check now tolerates −0.02 eV.
 
 ---
 
@@ -999,41 +1113,59 @@ exception. Treat these as the representative failure mode of this whole exercise
 
 ```text
 agentic-surface-catalysis/
-├── .gitignore
 ├── README.md
-├── NOTES.md                       # running log of findings and open questions
-├── config.py                      # model registry, thresholds, REQUIRED_CHECKS
-├── invoke.py                      # entry point, single reaction
-├── build_seeds.py                 # SBH10 SI POSCARs to tagged, validated ASE
-├── analysis/plot_seeded_results.py         # headline figure, no GPU required
-├── analysis/analyse_disagreement.py        # Finding 3, disagreement against error
-├── patch_*.py                     # applied source patches, kept as documentation
-├── requirements.txt
-├── data/                          # checkpoints and HF cache (gitignored)
+├── NOTES.md                        # running log of findings and open questions
+├── CLAUDE.md                       # working rules and invariants for AI assistants
+├── LICENSE                         # GNU GPL v3
+├── config.py                       # model registry, thresholds, REQUIRED_CHECKS
+├── invoke.py                       # entry point, single reaction
+├── build_seeds.py                  # SBH10 SI POSCARs to tagged, validated ASE
+├── reorganise_repo.py              # record of the 2026-09-23 layout change
+├── requirements.txt                # UMA environment
+├── requirements-mace.txt           # MACE and Orb environment
+├── analysis/
+│   ├── plot_seeded_results.py      # headline figure, no GPU
+│   ├── analyse_disagreement.py     # Finding 3, disagreement against error
+│   ├── escalate.py                 # leave one out test of an escalation rule
+│   ├── results_seeded_summary.md   # per reaction seeded tables
+│   └── seeded_d3_comparison.png    # headline figure
+├── data/                           # checkpoints and HF cache (gitignored)
 ├── data_sbh10_si/
-│   ├── poscars.txt                # transcribed SBH10 SI transition states
-│   └── expected_manifest.json     # validation record for the above
-├── work_seeds/                    # generated seed structures (gitignored)
+│   ├── poscars.txt                 # transcribed SBH10 SI transition states
+│   └── expected_manifest.json      # validation record for the above
+├── patches/                        # applied source edits, kept as the record
+│   ├── README.md                   # what they are and how to check them
+│   └── patch_*.py                  # one per fix, each explaining its evidence
+├── work_seeds/                     # generated seed structures (gitignored)
 ├── scripts/
-│   ├── run_grid.py                # resumable sweep, reactions x models x D3
-│   ├── run_seeded.py              # seeded track: published TS to barrier
-│   ├── cell_test.py               # controlled 3x3x4 against 2x2x6, agent excluded
-│   ├── probe_site_fix.py          # blind fcc against hcp site comparison
-│   ├── compare_site_geometries.py # free geometry diff of two relaxed endpoints
-│   ├── check_structures.py        # geometry checks, no GPU
-│   └── save_seeded_summary.py     # writes SEEDED_SUMMARY.md
+│   ├── run_grid.py                 # agent sweep, resumable
+│   ├── run_seeded.py               # seeded track: published TS to barrier
+│   ├── run_blind.py                # blind scripted track, no LLM
+│   ├── compare_tracks.py           # every track side by side
+│   ├── diagnose_run.py             # why an agent run ended, unsourced claims
+│   ├── check_structures.py         # geometry pre flight, no GPU
+│   ├── test_endpoints.py           # endpoint construction checks, all reactions
+│   ├── cell_test.py                # controlled cell sensitivity test
+│   ├── probe_robust_saddle.py      # saddle recovery against one reaction
+│   ├── probe_site_fix.py           # blind fcc against hcp comparison
+│   ├── compare_site_geometries.py  # geometry diff of two relaxed endpoints
+│   └── save_seeded_summary.py      # writes SEEDED_SUMMARY.md
 ├── tests/
-│   └── test_day1.py               # orientation and ZPE bookkeeping, CPU only
+│   ├── test_day1.py                # bond selection and ZPE bookkeeping
+│   ├── test_escalation.py          # escalation logic and its tool wrapper
+│   ├── test_neb_cap.py             # run_neb attempt cap
+│   └── test_saddle_refinement.py   # Sella saddle refinement
 └── src/
     ├── __init__.py
-    ├── agent.py                   # builds the three agents
-    ├── benchmark.py               # SBH10 references and uncertainties, tool unreachable
-    ├── calculators.py             # multi backend registry, dispersion, effective_with_d3
-    ├── graph.py                   # supervisor routing and the exit gate
-    ├── prompt.py                  # the three agent prompts
-    ├── store.py                   # run state and check results
-    ├── tools.py                   # structure, simulation and validation tools
-    └── zpe.py                     # zero point correction and its validator
+    ├── agent.py                    # builds the three agents
+    ├── benchmark.py                # SBH10 references, leak scan, tool unreachable
+    ├── calculators.py              # model backends, dispersion, effective_with_d3
+    ├── escalation.py               # run quality assessment
+    ├── graph.py                    # supervisor routing and the exit gate
+    ├── prompt.py                   # the three agent prompts
+    ├── store.py                    # run state and check results
+    ├── tools.py                    # structure, simulation and validation tools
+    └── zpe.py                      # zero point correction and its validator
 ```
 
 ## What is not finished
@@ -1077,10 +1209,21 @@ agentic-surface-catalysis/
   shared metal atoms, and near complete recombination is what a shared metal
   arrangement would be expected to produce. Whether the site selection fix
   resolves it has not been tested.
-- **`check_saddle_connects` fails on stepped geometries.** On `CH4_Ni111_step`
-  the displaced and relaxed endpoints differed by 0.02 Å, too little to
-  distinguish. The displacement magnitude is probably too small for a C–H bond
-  at a step edge. Candidate follow up.
+- **The blind fixes of 2026-09-23 have not been rerun.** The lowest connected
+  saddle rule and the well depth tolerance are committed. The table in the blind
+  track section predates both.
+- **A step transition state may need a Hessian that includes metal atoms.**
+  CH₄/Ni(111) step's band converged, yet three refinements found zero imaginary
+  modes. The Hessian covers adsorbate atoms only, and a step transition state
+  binds several metal atoms. Untested; a probe is planned.
+- **CH₄/Ni(100)'s CH₃ fragment desorbs at the saddle.** One untested hypothesis
+  is that without dispersion the initial CH₄ floats away, so the band breaks the
+  C–H bond far from any metal atom.
+- **Non activated reactions need their own category.** H₂/Ru(0001) has a
+  reference of zero and no activated saddle; reporting it as a failed barrier
+  misdescribes a correct outcome.
+- **The fcc against hcp site prototype is not in the code.** See the blind
+  evaluation section.
 - **Two reactions have no published transition state anywhere.** CH₄/Ni(100) and
   CH₄/Ru(0001) are experiment only in SBH17's Table 2, blank in every geometry
   column. The seeded track still evaluates them from the SBH10 SI POSCARs, but
