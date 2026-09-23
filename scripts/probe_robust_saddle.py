@@ -1,8 +1,8 @@
 """
 Test refine_saddle_robust against a seeded reaction's saddle failure.
 
-    python probe_robust_saddle.py --reaction CH4_Ru0001 --d3 off --compare
-    python probe_robust_saddle.py --reaction H2_Cu100   --d3 off
+    python scripts/probe_robust_saddle.py --reaction CH4_Ru0001 --d3 off --compare
+    python scripts/probe_robust_saddle.py --reaction H2_Cu100   --d3 off
 
 No agent, no API, GPU only. Mirrors run_seeded.py's own setup exactly
 (the store.put block is copied from there), so this is a fair comparison
@@ -44,8 +44,8 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ase.io import read, write
 

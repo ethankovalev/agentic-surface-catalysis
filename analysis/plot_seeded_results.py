@@ -82,7 +82,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results",
                     default="/workspace/agentic-surface-catalysis/results/seeded")
-    ap.add_argument("--out", default="seeded_d3_comparison.png")
+    ap.add_argument("--out", default=str(Path(__file__).resolve().parent / "seeded_d3_comparison.png"))
     args = ap.parse_args()
 
     data, maes = {}, {}

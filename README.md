@@ -412,7 +412,7 @@ python scripts/cell_test.py --reaction H2_Cu111 --d3 off
 
 ```bash
 python scripts/save_seeded_summary.py   # writes SEEDED_SUMMARY.md
-python plot_seeded_results.py           # writes seeded_d3_comparison.png
+python analysis/plot_seeded_results.py           # writes analysis/seeded_d3_comparison.png
 ```
 
 Because the two environments are separate, a full cross model grid is run once
@@ -709,8 +709,8 @@ of 0.800 eV above it: a 2.56 eV error with a physically impossible sign. Orb doe
 the same on N2/Ru(0001) step. These are not models that degrade gracefully off
 domain, they are models with no learned signal for the process at all.
 
-The full per reaction tables are in `results_seeded_summary.md`, and the figure
-is `seeded_d3_comparison.png`.
+The full per reaction tables are in `analysis/results_seeded_summary.md`, and the figure
+is `analysis/seeded_d3_comparison.png`.
 
 ### Finding 3: in domain disagreement carries an escalation signal
 
@@ -746,7 +746,7 @@ noise rather than information, so **an out of domain model must not be averaged
 into a confidence estimate.** Only the specific four model design here, two in
 domain and two out, could have separated those two cases.
 
-Reproduce with `python analyse_disagreement.py`, which prints the sample size
+Reproduce with `python analysis/analyse_disagreement.py`, which prints the sample size
 and p value alongside every correlation.
 
 #### Related work, and how this differs
@@ -1005,8 +1005,8 @@ agentic-surface-catalysis/
 ├── config.py                      # model registry, thresholds, REQUIRED_CHECKS
 ├── invoke.py                      # entry point, single reaction
 ├── build_seeds.py                 # SBH10 SI POSCARs to tagged, validated ASE
-├── plot_seeded_results.py         # headline figure, no GPU required
-├── analyse_disagreement.py        # Finding 3, disagreement against error
+├── analysis/plot_seeded_results.py         # headline figure, no GPU required
+├── analysis/analyse_disagreement.py        # Finding 3, disagreement against error
 ├── patch_*.py                     # applied source patches, kept as documentation
 ├── requirements.txt
 ├── data/                          # checkpoints and HF cache (gitignored)
