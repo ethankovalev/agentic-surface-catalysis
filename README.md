@@ -1111,73 +1111,12 @@ exception. Treat these as the representative failure mode of this whole exercise
 
 ## The pipeline
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"fontSize": "14px", "primaryColor": "#ffffff", "primaryTextColor": "#1f2328", "primaryBorderColor": "#8c959f", "lineColor": "#8c959f", "clusterBkg": "#f6f8fa", "clusterBorder": "#d0d7de", "titleColor": "#1f2328", "edgeLabelBackground": "#ffffff"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 45, "padding": 12, "subGraphTitleMargin": {"top": 6, "bottom": 10}}}}%%
-flowchart TD
-    subgraph ENTRY["Three ways in"]
-        direction LR
-        SEED["<b>Seeded</b><br/>starts at the<br/>published saddle"]
-        BLIND["<b>Blind scripted</b><br/>fixed order<br/>no language model"]
-        AGENT["<b>Agent</b><br/>three agents<br/>choose the order"]
-    end
+<p align="center">
+  <img src="docs/pipeline.png" width="760" alt="The pipeline in six stages: build, relax, find the path, converge on the saddle, barrier, verify. Three tracks enter at the top; scoring against SBH10 happens only after the run.">
+</p>
 
-    subgraph BUILD["1 · Build from scratch"]
-        direction LR
-        SLAB["Slab<br/>terrace or step"] --> PLACE["Place molecule<br/>bond toward surface"] --> ENDPT["Dissociated state<br/>separate metal atoms"]
-    end
-
-    subgraph RELAX["2 · Relax"]
-        direction LR
-        ENDS["Initial and<br/>final states"] --> GAS["Free molecule<br/>gas reference"] --> MINS["Both endpoints<br/>are minima?"]
-    end
-
-    subgraph BAND["3 · Find the path"]
-        direction LR
-        NEB["Climbing image<br/>NEB"] --> CONV{"Converged?"}
-        CONV -- no --> NEB2["One finer band,<br/>then refine both"]
-    end
-
-    subgraph SADDLE["4 · Converge on the saddle"]
-        direction LR
-        REF["Refine each peak<br/>with Sella"] --> OK["Accept only if<br/>one imaginary mode,<br/>bond still stretched,<br/>path connects"]
-        OK -- no --> FIX["Recover<br/>by failure type"] --> REF
-        OK -- yes --> LOW["Lowest connected<br/>saddle"]
-    end
-
-    subgraph ENERGY["5 · Barrier"]
-        direction LR
-        BAR["Measured from<br/>the free molecule"] --> ZPE["Zero point<br/>correction"]
-    end
-
-    subgraph CHECK["6 · Verify"]
-        direction LR
-        CHK["11 physics checks<br/>structural sanity"] --> GATE{"All pass?"}
-        GATE -- yes --> YES["Validated"]
-        GATE -- no --> NO["Refused<br/>with reasons"]
-    end
-
-    SCORE["Scored against SBH10<br/>only after the run"]
-
-    BLIND --> BUILD
-    AGENT --> BUILD
-    BUILD --> RELAX --> BAND --> SADDLE
-    SEED --> SADDLE
-    SADDLE --> ENERGY --> CHECK
-    CHECK -- validated only --> SCORE
-
-    classDef entry fill:#ddf4ff,stroke:#0969da,color:#0a3069,stroke-width:1.5px
-    classDef step fill:#ffffff,stroke:#8c959f,color:#1f2328
-    classDef decide fill:#fff8c5,stroke:#9a6700,color:#4d2d00
-    classDef good fill:#dafbe1,stroke:#1a7f37,color:#0f5323,stroke-width:1.5px
-    classDef bad fill:#ffebe9,stroke:#cf222e,color:#82071e
-    classDef score fill:#fbefff,stroke:#8250df,color:#3e1f79,stroke-width:1.5px
-    class SEED,BLIND,AGENT entry
-    class SLAB,PLACE,ENDPT,ENDS,GAS,MINS,NEB,NEB2,REF,FIX,LOW,BAR,ZPE,CHK step
-    class CONV,OK,GATE decide
-    class YES good
-    class NO bad
-    class SCORE score
-```
+The diagram is drawn from `docs/pipeline.mmd`. After editing it, regenerate the image from the repository root with
+`npx -p @mermaid-js/mermaid-cli mmdc -i docs/pipeline.mmd -o docs/pipeline.png -b white -w 1000 -s 2`.
 
 Every track uses the same tools. The seeded track skips building and the band,
 because it starts from the published saddle; it also reports a single point at
@@ -1204,6 +1143,7 @@ returns.
 | `tests/` | CPU only regression tests |
 | `analysis/` | the headline figure, seeded summary tables and the disagreement analysis |
 | `patches/` | every source edit, each explaining the bug it fixed and the evidence |
+| `docs/` | the pipeline diagram and its source |
 | `data_sbh10_si/` | the transcribed SBH10 transition states and their validation record |
 
 At the root: `config.py` (model registry, thresholds, required checks),
