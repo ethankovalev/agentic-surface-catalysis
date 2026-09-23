@@ -110,6 +110,19 @@ def failed(text):
     return text.startswith("FAILED") or text.startswith("NOT")
 
 
+def _keep_peak(work, label, neb, peaks):
+    """Copy the current NEB peak aside so a later band cannot overwrite it."""
+    src = work / "peak.traj"
+    if not src.exists():
+        return
+    dst = work / f"peak_{label}.traj"
+    shutil.copy(src, dst)
+    neb = neb or {}
+    peaks.append({"label": label, "file": dst,
+                  "band_barrier_eV": neb.get("barrier_eV"),
+                  "converged": bool(neb.get("converged"))})
+
+
 def run_one(rid, spec, model_key, with_d3, n_images):
     """The fixed policy for one reaction. Returns (steps, stopped_at)."""
     steps = []
@@ -149,23 +162,70 @@ def run_one(rid, spec, model_key, with_d3, n_images):
     if out.startswith("FAILED"):
         return steps, "run_neb"
 
+    # Keep every band's peak. On 2026-09-23 N2/Ru(0001) terrace ran two
+    # bands: the first peaked at 1.450 eV and was never refined, the second
+    # converged at 1.739 eV and was. The agent had refined the first and
+    # found a connected saddle at 1.411 eV. Two connected saddles for one
+    # reaction, and the policy kept whichever came last.
+    work = Path(config.WORK_DIR)
+    peaks = []
+    _keep_peak(work, "band1", store.get("neb"), peaks)
+
     # One finer band when the first did not converge. MAX_NEB_ATTEMPTS
-    # allows two. An unconverged band hands refinement a poor starting
-    # peak: on the first sweep CH4/Ru(0001)'s band put 76% of the climb in
-    # one step, and refinement drifted 2.09 A from that peak. A second band
-    # is not guaranteed to help - on N2/Ru(0001) two bands were both
-    # unconverged - but it is the one retry the tool permits.
+    # allows two. It is not guaranteed to help - on N2/Ru(0001) two bands
+    # were once both unconverged - but it is the one retry the tool permits.
     if not (store.get("neb") or {}).get("converged"):
         out = call(run_neb, steps, n_images=n_images + 6, **kw)
         if out.startswith("FAILED"):
             return steps, "run_neb (second band)"
+        _keep_peak(work, "band2", store.get("neb"), peaks)
 
-    # The recovery rule, applied every time rather than left to judgement.
-    call(refine_saddle_robust, steps, **kw)
+    # Refine every plausible peak; keep the LOWEST connected saddle. The
+    # lowest connected saddle sets the rate. This rule never looks at the
+    # reference, and it can move a result further from it: N2 terrace is
+    # expected to go from 1.704 back toward 1.41, further from 1.84.
+    tried = [pk for pk in peaks
+             if pk["band_barrier_eV"] is None
+             or pk["band_barrier_eV"] <= BARRIER_MAX_eV]
+    if not tried and peaks:
+        tried = peaks[-1:]
+    for pk in peaks:
+        if pk not in tried:
+            steps.append({"tool": "policy", "output": (
+                f"skipped {pk['label']} peak: band barrier "
+                f"{pk['band_barrier_eV']:.2f} eV is above {BARRIER_MAX_eV}")})
+
+    candidates = []
+    for pk in tried:
+        shutil.copy(pk["file"], work / "peak.traj")
+        call(refine_saddle_robust, steps, **kw)
+        saddle = store.get("saddle") or {}
+        summary = {"band": pk["label"],
+                   "band_barrier_eV": pk["band_barrier_eV"],
+                   "first_order": bool(saddle.get("first_order_saddle")),
+                   "connects": None, "barrier_eV": saddle.get("barrier_eV")}
+        if saddle.get("first_order_saddle"):
+            call(check_saddle_connects, steps, **kw)
+            conn = store.get("saddle_connectivity") or {}
+            summary["connects"] = conn.get("connects")
+            if conn.get("connects") is True:
+                kept = work / f"saddle_{pk['label']}.traj"
+                shutil.copy(work / "saddle.traj", kept)
+                candidates.append({"energy": saddle.get("energy_eV"),
+                                   "saddle": dict(saddle),
+                                   "connectivity": dict(conn),
+                                   "file": kept, "band": pk["label"]})
+        store.put("saddle_candidates",
+                  (store.get("saddle_candidates") or []) + [summary])
+
+    if candidates:
+        best = min(candidates, key=lambda c: c["energy"])
+        store.put("saddle", best["saddle"])
+        store.put("saddle_connectivity", best["connectivity"])
+        shutil.copy(best["file"], work / "saddle.traj")
+        store.put("saddle_chosen_from", best["band"])
+
     saddle = store.get("saddle") or {}
-    if saddle.get("first_order_saddle"):
-        call(check_saddle_connects, steps, **kw)
-
     call(compute_gas_referenced_barrier, steps)
     if saddle.get("first_order_saddle"):
         call(compute_zpe_correction, steps, **kw)
@@ -289,6 +349,8 @@ def main():
                 "validation_detail": store.get("validation_detail", {}),
                 "stopped_at": stopped,
                 "run_error": run_error,
+                "saddle_candidates": store.get("saddle_candidates"),
+                "saddle_chosen_from": store.get("saddle_chosen_from"),
                 "structural_problems": structural,
                 "n_structural_problems": n_structural,
                 "energy_flags": e_flags,
