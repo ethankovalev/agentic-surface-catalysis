@@ -149,6 +149,17 @@ def run_one(rid, spec, model_key, with_d3, n_images):
     if out.startswith("FAILED"):
         return steps, "run_neb"
 
+    # One finer band when the first did not converge. MAX_NEB_ATTEMPTS
+    # allows two. An unconverged band hands refinement a poor starting
+    # peak: on the first sweep CH4/Ru(0001)'s band put 76% of the climb in
+    # one step, and refinement drifted 2.09 A from that peak. A second band
+    # is not guaranteed to help - on N2/Ru(0001) two bands were both
+    # unconverged - but it is the one retry the tool permits.
+    if not (store.get("neb") or {}).get("converged"):
+        out = call(run_neb, steps, n_images=n_images + 6, **kw)
+        if out.startswith("FAILED"):
+            return steps, "run_neb (second band)"
+
     # The recovery rule, applied every time rather than left to judgement.
     call(refine_saddle_robust, steps, **kw)
     saddle = store.get("saddle") or {}

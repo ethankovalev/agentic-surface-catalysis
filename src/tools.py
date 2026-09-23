@@ -1187,6 +1187,28 @@ CONNECTIVITY_PUSH_A = 0.35
 CONNECTIVITY_STEPS = 60
 
 
+def _intact_bond_length(atoms, anchor, terminal):
+    """The breaking bond as it is in the relaxed initial state.
+
+    The covalent radius sum is a poor stand-in for H-H: 0.62 A against a
+    real 0.74 A bond, which left almost no room for a molecular end to be
+    recognised as recombined. Falls back to the covalent sum only when
+    initial.traj is missing, or when that state is itself not intact.
+    """
+    covalent = (covalent_radii[atoms[anchor].number]
+                + covalent_radii[atoms[terminal].number])
+    path = Path(_path("initial.traj"))
+    if not path.exists():
+        return covalent
+    try:
+        measured = float(read(str(path)).get_distance(anchor, terminal, mic=True))
+    except Exception:
+        return covalent
+    if measured > 1.5 * covalent:
+        return covalent
+    return measured
+
+
 def _connectivity_by_bond(atoms, model_key, with_d3):
     """Push the breaking bond both ways; see where each side falls.
 
@@ -1203,8 +1225,7 @@ def _connectivity_by_bond(atoms, model_key, with_d3):
         return None, "breaking bond could not be identified"
 
     anchor, terminal, r_saddle = found
-    intact = (covalent_radii[atoms[anchor].number]
-              + covalent_radii[atoms[terminal].number])
+    intact = _intact_bond_length(atoms, anchor, terminal)
 
     axis = atoms.positions[terminal] - atoms.positions[anchor]
     norm = np.linalg.norm(axis)
@@ -1268,8 +1289,7 @@ def _connectivity_by_irc(atoms, model_key, with_d3):
     if found is None:
         return None, "breaking bond could not be identified"
     anchor, terminal, r_saddle = found
-    intact = (covalent_radii[atoms[anchor].number]
-              + covalent_radii[atoms[terminal].number])
+    intact = _intact_bond_length(atoms, anchor, terminal)
 
     try:
         from sella import IRC
@@ -1936,8 +1956,16 @@ def check_saddle_connects(model_key: str = None, with_d3: bool = True,
 
     model_key = model_key or config.DEFAULT_MODEL
 
+    # The breaking bond, found on the saddle and applied to every
+    # structure by index. ads[0] to ads[1] was the carbon and a spectator
+    # hydrogen for every CH4 reaction.
+    found = _breaking_bond(saddle)
+    if found is None:
+        return "FAILED: the breaking bond could not be identified at the saddle."
+    anchor, terminal, _ = found
+
     def pair(atoms):
-        return float(atoms.get_distance(ads[0], ads[1], mic=True))
+        return float(atoms.get_distance(anchor, terminal, mic=True))
 
     d_initial, d_final = pair(initial), pair(final)
     if abs(d_final - d_initial) < 1.0:
@@ -1976,23 +2004,39 @@ def check_saddle_connects(model_key: str = None, with_d3: bool = True,
         #
         # Nearest-endpoint matching called that "initial" and rejected a
         # correct saddle. What matters is which basin it fell into.
-        midpoint = 0.5 * (d_initial + d_final)
-        landed[label] = (d, "initial" if d < midpoint else "final")
+        #
+        # A midpoint between the two endpoint separations moves with the
+        # final state. Once fragments were kept on separate metal atoms,
+        # the H2/Cu(111) final state moved to 4.42 A, the midpoint to
+        # 2.59 A, and the correct 2.02 A adjacent-site product fell on the
+        # "initial" side. Judge against the intact bond instead.
+        recombined_below = 1.35 * d_initial
+        dissociated_above = 1.8 * d_initial
+        if d < recombined_below:
+            where = "initial"
+        elif d > dissociated_above:
+            where = "final"
+        else:
+            where = "neither"
+        landed[label] = (d, where)
 
     fwd_d, fwd_where = landed["forward"]
     bwd_d, bwd_where = landed["backward"]
 
+    connects = {fwd_where, bwd_where} == {"initial", "final"}
     store.put("saddle_connectivity", {
-        "connects": fwd_where != bwd_where,
+        "connects": connects,
         "forward_pair_A": fwd_d, "forward_lands_on": fwd_where,
         "backward_pair_A": bwd_d, "backward_lands_on": bwd_where,
         "initial_pair_A": d_initial, "final_pair_A": d_final,
         "imaginary_mode_meV": imag,
     })
 
-    if fwd_where == bwd_where:
+    if not connects:
         return (f"SADDLE DOES NOT CONNECT THE ENDPOINTS: following the "
-                f"imaginary mode both ways falls to the {fwd_where} state "
+                f"imaginary mode lands forward on {fwd_where} and backward "
+                f"on {bwd_where}, where one must recombine the molecule and "
+                f"the other break it "
                 f"(adsorbate pair {fwd_d:.2f} and {bwd_d:.2f} A, against "
                 f"{d_initial:.2f} initial and {d_final:.2f} final). This "
                 f"saddle belongs to some other process. Its energy is not "
