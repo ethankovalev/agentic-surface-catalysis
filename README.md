@@ -1112,64 +1112,71 @@ exception. Treat these as the representative failure mode of this whole exercise
 ## The pipeline
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "14px", "primaryColor": "#ffffff", "primaryTextColor": "#1f2328", "primaryBorderColor": "#8c959f", "lineColor": "#8c959f", "clusterBkg": "#f6f8fa", "clusterBorder": "#d0d7de", "titleColor": "#1f2328", "edgeLabelBackground": "#ffffff"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 45, "padding": 12, "subGraphTitleMargin": {"top": 6, "bottom": 10}}}}%%
 flowchart TD
     subgraph ENTRY["Three ways in"]
-        SEED["Seeded track<br/>starts from the published SBH10 transition state"]
-        BLIND["Blind scripted track<br/>fixed order, no language model"]
-        AGENT["Agent track<br/>supervisor and three agents choose the order"]
+        direction LR
+        SEED["<b>Seeded</b><br/>starts at the<br/>published saddle"]
+        BLIND["<b>Blind scripted</b><br/>fixed order<br/>no language model"]
+        AGENT["<b>Agent</b><br/>three agents<br/>choose the order"]
     end
 
-    subgraph BUILD["1. Build, from scratch"]
-        SLAB["Slab<br/>terrace or step, cell size from the spec"]
-        PLACE["Place the molecule<br/>breaking bond turned toward the surface"]
-        ENDPT["Dissociated endpoint<br/>fragments on separate metal atoms"]
+    subgraph BUILD["1 · Build from scratch"]
+        direction LR
+        SLAB["Slab<br/>terrace or step"] --> PLACE["Place molecule<br/>bond toward surface"] --> ENDPT["Dissociated state<br/>separate metal atoms"]
     end
 
-    subgraph RELAX["2. Relax the endpoints"]
-        ENDS["Relax initial and final states"]
-        GAS["Gas reference<br/>the free molecule, same slab"]
-        MINS["Check both endpoints are minima"]
+    subgraph RELAX["2 · Relax"]
+        direction LR
+        ENDS["Initial and<br/>final states"] --> GAS["Free molecule<br/>gas reference"] --> MINS["Both endpoints<br/>are minima?"]
     end
 
-    subgraph BAND["3. Find the path"]
-        NEB["Climbing image NEB"]
-        CONV{"Band converged?"}
-        NEB2["One finer band"]
+    subgraph BAND["3 · Find the path"]
+        direction LR
+        NEB["Climbing image<br/>NEB"] --> CONV{"Converged?"}
+        CONV -- no --> NEB2["One finer band,<br/>then refine both"]
     end
 
-    subgraph SADDLE["4. Converge on the saddle"]
-        REF["Refine each band peak with Sella"]
-        OK{"Exactly one imaginary mode,<br/>breaking bond still stretched,<br/>connects reactant to product?"}
-        FIX["Recover by failure type<br/>ridge: step along the second mode<br/>collapse: smaller trust radius<br/>wrong reaction: pin the breaking bond"]
-        LOW["Keep the lowest connected saddle"]
+    subgraph SADDLE["4 · Converge on the saddle"]
+        direction LR
+        REF["Refine each peak<br/>with Sella"] --> OK["Accept only if<br/>one imaginary mode,<br/>bond still stretched,<br/>path connects"]
+        OK -- no --> FIX["Recover<br/>by failure type"] --> REF
+        OK -- yes --> LOW["Lowest connected<br/>saddle"]
     end
 
-    subgraph ENERGY["5. The barrier"]
-        BAR["Gas referenced barrier<br/>measured from the free molecule"]
-        ZPE["Zero point correction"]
+    subgraph ENERGY["5 · Barrier"]
+        direction LR
+        BAR["Measured from<br/>the free molecule"] --> ZPE["Zero point<br/>correction"]
     end
 
-    subgraph CHECK["6. Verification"]
-        CHK["Eleven physics checks<br/>plus structural sanity"]
-        GATE{"Every check passed?"}
-        YES["Validated barrier"]
-        NO["Refused, with the reasons"]
+    subgraph CHECK["6 · Verify"]
+        direction LR
+        CHK["11 physics checks<br/>structural sanity"] --> GATE{"All pass?"}
+        GATE -- yes --> YES["Validated"]
+        GATE -- no --> NO["Refused<br/>with reasons"]
     end
 
-    SCORE["Scored against the SBH10 reference<br/>only after the run has finished"]
+    SCORE["Scored against SBH10<br/>only after the run"]
 
-    BLIND --> SLAB
-    AGENT --> SLAB
-    SLAB --> PLACE --> ENDPT --> ENDS --> GAS --> MINS --> NEB --> CONV
-    CONV -- no --> NEB2 --> REF
-    CONV -- yes --> REF
-    SEED --> REF
-    REF --> OK
-    OK -- no --> FIX --> REF
-    OK -- yes --> LOW --> BAR --> ZPE --> CHK --> GATE
-    GATE -- yes --> YES --> SCORE
-    GATE -- no --> NO
-    ENDS -. structural sanity after every relaxation .-> CHK
+    BLIND --> BUILD
+    AGENT --> BUILD
+    BUILD --> RELAX --> BAND --> SADDLE
+    SEED --> SADDLE
+    SADDLE --> ENERGY --> CHECK
+    CHECK -- validated only --> SCORE
+
+    classDef entry fill:#ddf4ff,stroke:#0969da,color:#0a3069,stroke-width:1.5px
+    classDef step fill:#ffffff,stroke:#8c959f,color:#1f2328
+    classDef decide fill:#fff8c5,stroke:#9a6700,color:#4d2d00
+    classDef good fill:#dafbe1,stroke:#1a7f37,color:#0f5323,stroke-width:1.5px
+    classDef bad fill:#ffebe9,stroke:#cf222e,color:#82071e
+    classDef score fill:#fbefff,stroke:#8250df,color:#3e1f79,stroke-width:1.5px
+    class SEED,BLIND,AGENT entry
+    class SLAB,PLACE,ENDPT,ENDS,GAS,MINS,NEB,NEB2,REF,FIX,LOW,BAR,ZPE,CHK step
+    class CONV,OK,GATE decide
+    class YES good
+    class NO bad
+    class SCORE score
 ```
 
 Every track uses the same tools. The seeded track skips building and the band,
