@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 from ase.build import add_adsorbate, fcc100, fcc110, fcc111, hcp0001, molecule
 from ase.data import atomic_numbers, covalent_radii
-from ase.constraints import FixAtoms
+from ase.constraints import FixAtoms, FixConstraint
 from ase.neighborlist import natural_cutoffs, NeighborList
 from ase.io import read, write
 from ase.optimize import BFGS, FIRE
@@ -2151,6 +2151,153 @@ def _neb_attempt_guard(attempts_so_far, peak_exists):
     )
 
 
+# The band wall. See patches/patch_band_wall.py for the evidence.
+WALL_MARGIN_A = 0.2      # below the lowest exposed metal surface
+
+
+def _images_inside_slab(images):
+    """Indices of interior band images with an adsorbate atom inside the slab.
+
+    Uses the same surrounded-by-metal test as the geometry check, so a band
+    is judged by exactly the rule the final result will be judged by.
+    """
+    inside = []
+    for n, image in enumerate(images[1:-1], start=1):
+        if _subsurface_adsorbates(image):
+            inside.append(n)
+    return inside
+
+
+def _exposed_surface_floor(atoms):
+    """Height of the lowest metal atom with nothing above it.
+
+    A metal atom is exposed if no other metal atom sits over it, within
+    1.5 A sideways and at least 0.5 A higher. Bottom layer atoms have atoms
+    above them, so they never count. On a stepped slab the answer is the
+    lower terrace.
+    """
+    tags = atoms.get_tags()
+    metal = [i for i in range(len(atoms)) if tags[i] != 2]
+    cell2 = np.array(atoms.cell[:2, :2], dtype=float)
+    inv2 = np.linalg.inv(cell2)
+    exposed = []
+    for i in metal:
+        covered = False
+        for j in metal:
+            if j == i or atoms.positions[j, 2] < atoms.positions[i, 2] + 0.5:
+                continue
+            d = (atoms.positions[j, :2] - atoms.positions[i, :2]) @ inv2
+            d -= np.round(d)
+            if np.linalg.norm(d @ cell2) < 1.5:
+                covered = True
+                break
+        if not covered:
+            exposed.append(atoms.positions[i, 2])
+    return float(min(exposed)) if exposed else float(max(
+        atoms.positions[i, 2] for i in metal))
+
+
+class SurfaceWall(FixConstraint):
+    """A hard, one-sided wall under the exposed surface. Geometric only.
+
+    Like FixAtoms, it acts on positions and forces and never on energy:
+      - an adsorbate atom that would move below wall_z is placed on it;
+      - for an atom on the wall, the force component pushing it further
+        in is removed, so the optimiser converges against the wall;
+      - no adjust_potential_energy is defined, and ASE only adds a
+        constraint's energy when that method exists. Every energy read
+        with this wall in place is the calculator's energy, exactly.
+    Above the wall it does nothing.
+
+    It is never saved into a trajectory: ASE cannot read back a constraint
+    it does not know, so it is always removed before anything is written.
+    """
+
+    def __init__(self, indices, wall_z):
+        self.index = [int(i) for i in indices]
+        self.wall_z = float(wall_z)
+
+    def get_removed_dof(self, atoms):
+        return 0
+
+    def adjust_positions(self, atoms, new):
+        for i in self.index:
+            if new[i, 2] < self.wall_z:
+                new[i, 2] = self.wall_z
+
+    def adjust_forces(self, atoms, forces):
+        for i in self.index:
+            on_wall = atoms.positions[i, 2] <= self.wall_z + 1e-6
+            if on_wall and forces[i, 2] < 0.0:
+                forces[i, 2] = 0.0
+
+    def copy(self):
+        # The base class copies through ASE's constraint registry, which
+        # does not know this class.
+        return SurfaceWall(self.index, self.wall_z)
+
+    def todict(self):
+        return {"name": "SurfaceWall",
+                "kwargs": {"indices": self.index, "wall_z": self.wall_z}}
+
+
+def _add_wall(images, wall_z):
+    """A SurfaceWall on the adsorbate atoms of every interior image. Any
+    atom already below the wall is moved up onto it at once."""
+    for image in images[1:-1]:
+        tags = image.get_tags()
+        ads = [i for i in range(len(image)) if tags[i] == 2]
+        image.set_constraint(list(image.constraints) + [SurfaceWall(ads, wall_z)])
+        image.set_positions(image.get_positions())
+
+
+def _remove_wall(images):
+    """Strip the wall, keeping the fixed layers."""
+    for image in images:
+        image.set_constraint([c for c in image.constraints
+                              if not isinstance(c, SurfaceWall)])
+
+
+def _optimise_band(start, end, n_images, model_key, with_d3, max_steps,
+                   fmax, wall_z=None):
+    """Build, interpolate and optimise one band. Returns (images, converged).
+
+    Two passes with FIRE: climbing image off to let the band settle, then
+    on with a fresh optimiser. The wall, if any, is added after
+    interpolation so IDPP is unaffected, and is left on the images; it
+    adds no energy, and the caller removes it before peak.traj is written.
+    """
+    images = [start.copy()]
+    for _ in range(n_images):
+        images.append(start.copy())
+    images.append(end.copy())
+    for image in images:
+        image.calc = new_calculator(model_key, with_d3=with_d3)
+
+    neb = NEB(images, climb=False, k=config.NEB_SPRING_K,
+              method="improvedtangent")
+    neb.interpolate(method="idpp")
+    if wall_z is not None:
+        _add_wall(images, wall_z)
+
+    # Pass 1: rough path, climbing image off. Enabling climb before the
+    # band has settled is a common cause of oscillation.
+    FIRE(neb, logfile="-").run(fmax=0.2, steps=max_steps // 2)
+
+    # Pass 2: fresh optimiser. Climbing image inverts the parallel force
+    # on the peak, so pass 1's accumulated velocity now describes a
+    # function that no longer exists.
+    neb.climb = True
+    # No step-by-step trajectory while the wall is on: ASE cannot read back
+    # a file holding a constraint it does not know. run_neb writes the final
+    # band to neb.traj once the wall is removed. Without a wall, neb.traj is
+    # written exactly as before.
+    trajectory = _path("neb.traj") if wall_z is None else None
+    opt2 = FIRE(neb, trajectory=trajectory, logfile="-")
+    converged = opt2.run(fmax=fmax, steps=max_steps)
+    return images, bool(converged)
+
+
 @tool
 def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
             max_steps: int = 400) -> str:
@@ -2193,30 +2340,6 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     start = read(_path("initial.traj"))
     end = read(_path("final.traj"))
 
-    images = [start]
-    for _ in range(n_images):
-        img = start.copy()
-        img.calc = new_calculator(model_key, with_d3=with_d3)
-        images.append(img)
-    images.append(end)
-
-    start.calc = new_calculator(model_key, with_d3=with_d3)
-    end.calc = new_calculator(model_key, with_d3=with_d3)
-
-    neb = NEB(images, climb=False, k=config.NEB_SPRING_K,
-              method="improvedtangent")
-    neb.interpolate(method="idpp")
-
-    # Pass 1: rough path, climbing image off. Enabling climb before the
-    # band has settled is a common cause of oscillation.
-    FIRE(neb, logfile="-").run(fmax=0.2, steps=max_steps // 2)
-
-    # Pass 2: fresh optimiser. Climbing image inverts the parallel force
-    # on the peak, so pass 1's accumulated velocity now describes a
-    # function that no longer exists.
-    neb.climb = True
-    opt2 = FIRE(neb, trajectory=_path("neb.traj"), logfile="-")
-
     # Pinned, deliberately not a tool argument. Every reaction in the
     # benchmark must converge to the same tolerance or the barriers are not
     # comparable across the grid. This was previously agent-settable with a
@@ -2224,7 +2347,26 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     # obvious in the output. Recorded in the store below so every result
     # carries the tolerance it was computed at.
     NEB_FMAX = 0.05
-    converged = opt2.run(fmax=NEB_FMAX, steps=max_steps)
+    images, converged = _optimise_band(start, end, n_images, model_key,
+                                       with_d3, max_steps, NEB_FMAX)
+
+    # A band can route an adsorbate through the metal. On N2/Ru(0001) step
+    # an unconverged band put an N atom below the lower terrace, and the
+    # only saddle near its peak belonged to N moving inside the slab. If any
+    # image does this, rebuild the band with a hard wall just below the
+    # exposed surface. The wall is geometric and adds no energy; it is
+    # removed before peak.traj is written, so refinement never sees it.
+    inside_first = _images_inside_slab(images)
+    wall_z = None
+    inside_after = inside_first
+    if inside_first:
+        wall_z = _exposed_surface_floor(start) - WALL_MARGIN_A
+        images, converged = _optimise_band(start, end, n_images, model_key,
+                                           with_d3, max_steps, NEB_FMAX,
+                                           wall_z=wall_z)
+        _remove_wall(images)
+        write(_path("neb.traj"), images)
+        inside_after = _images_inside_slab(images)
 
     # get_barrier() defaults to fit=True, which returns the peak of a spline
     # fitted through the images rather than any computed image. On an
@@ -2254,6 +2396,10 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
         "n_images": len(images),
         "fmax_target": NEB_FMAX,
         "profile_eV": [float(u) for u in uphill],
+        "images_inside_slab_first_pass": inside_first,
+        "wall_applied": wall_z is not None,
+        "wall_z_A": wall_z,
+        "images_inside_slab_final": inside_after,
     })
     store.put("barrier_eV", float(barrier))
 
@@ -2261,9 +2407,18 @@ def run_neb(n_images: int = 10, model_key: str = None, with_d3: bool = True,
     capped = (f" Requested {requested_images} images but capped at "
               f"{MAX_IMAGES} - asking for more will not change this."
               if requested_images > MAX_IMAGES else "")
+    wall_note = ""
+    if wall_z is not None:
+        wall_note = (f" The first band put an adsorbate inside the slab at "
+                     f"image(s) {inside_first}, so it was rebuilt with a wall "
+                     f"at z = {wall_z:.2f} A. The wall is geometric and adds "
+                     f"no energy.")
+        if inside_after:
+            wall_note += (f" Image(s) {inside_after} are still inside the "
+                          f"slab after the retry.")
     return (f"NEB {status}. Barrier {barrier:.3f} eV, reaction energy "
             f"{reaction_energy:.3f} eV, peak at image {peak} of "
-            f"{len(images) - 1}.{capped}")
+            f"{len(images) - 1}.{capped}{wall_note}")
 
 
 @tool

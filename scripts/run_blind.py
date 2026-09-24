@@ -331,7 +331,20 @@ def main():
                 if src.exists():
                     shutil.copy(src, folder / f"{name}.traj")
 
-            barrier = store.get("barrier_eV")
+            # A barrier only when a connected saddle was found. Otherwise
+            # the gas-referenced barrier falls back to the NEB peak held in
+            # memory, which can be a band the policy itself rejected: on
+            # N2/Ru(0001) step that put 3.611 eV into the results.
+            band_barriers = [s["band_barrier_eV"]
+                             for s in (store.get("saddle_candidates") or [])]
+            if store.get("saddle_chosen_from"):
+                barrier = store.get("barrier_eV")
+                barrier_note = "connected saddle"
+            else:
+                barrier = None
+                barrier_note = ("no connected saddle was found, so no barrier "
+                                "is reported; band barriers are kept for "
+                                "information only")
             ref = spec.get("reference_eV")
             structural = audit(folder)
             n_structural = sum(len(v) for v in structural.values())
@@ -350,6 +363,8 @@ def main():
                 "stopped_at": stopped,
                 "run_error": run_error,
                 "saddle_candidates": store.get("saddle_candidates"),
+                "barrier_note": barrier_note,
+                "band_barriers_eV": band_barriers,
                 "saddle_chosen_from": store.get("saddle_chosen_from"),
                 "structural_problems": structural,
                 "n_structural_problems": n_structural,
