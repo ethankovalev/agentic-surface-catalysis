@@ -31,39 +31,6 @@ measured across four models and both dispersion settings, is that **dispersion
 hurts every model tested, and training domain matters more than architecture.**
 See [Current status](#current-status).
 
-## What actually goes wrong
-
-An inaccurate barrier is one failure mode, and the easiest to measure. The more
-dangerous one is a model producing a structure that is physically wrong, with an
-energy that looks reasonable, and no warning. A wrong barrier on a correct
-structure is off by some amount. A wrong structure is not the reaction at all.
-
-This repository has examples of both kinds of wrong structure.
-
-**Produced by a model.** MACE mpa 0, trained on bulk crystals only, places the
-CH₄/Ni(111) step transition state 1.755 eV *below* its own reactant state, a
-physically impossible sign. UMA, on CH₄/Ni(100), converges cleanly to a first
-order saddle with a single imaginary mode at 40.6 meV; pushing the breaking bond
-0.35 Å either way relaxes straight back to 2.39 Å, so the saddle belongs to some
-other motion entirely and its 0.629 eV "barrier" is not this reaction's.
-
-**Produced by the pipeline.** The endpoint builder placed the two N atoms of
-dissociated N₂/Ru(0001) 2.563 Å apart, sharing a surface Ru atom. That is the
-repulsive adjacent site arrangement, not the product minimum, which is reached
-only once the atoms diffuse onto separate metal atoms (Chorkendorff and
-Niemantsverdriet, *Concepts of Modern Catalysis and Kinetics*, section
-6.5.3.2). Earlier, CH₄ went down edge first and broke the wrong C–H bond, giving
-7 eV against a 0.8 eV reference.
-
-Every one of these produced a plausible number and no exception.
-
-**The limit, stated plainly.** The checks here are generic: mode counts,
-connectivity, bond geometry, shared metal atoms, drift. They catch failures that
-look the same on every system. They cannot anticipate a failure specific to one
-chemistry, which only shows up when that system is actually studied. Nothing in
-this repository should be read as a guarantee that an MLIP result is physical;
-only that these particular ways of being unphysical have been ruled out.
-
 ## Where this sits in the field
 
 The Nature Catalysis roadmap for AI in heterogeneous catalysis (Xin, Kitchin,
@@ -806,6 +773,39 @@ domain and two out, could have separated those two cases.
 
 Reproduce with `python analysis/analyse_disagreement.py`, which prints the sample size
 and p value alongside every correlation.
+
+## What actually goes wrong
+
+An inaccurate barrier is one failure mode, and the easiest to measure. The more
+dangerous one is a model producing a structure that is physically wrong, with an
+energy that looks reasonable, and no warning. A wrong barrier on a correct
+structure is off by some amount. A wrong structure is not the reaction at all.
+
+This repository has examples of both kinds of wrong structure.
+
+**Produced by a model.** MACE mpa 0, trained on bulk crystals only, places the
+CH₄/Ni(111) step transition state 1.755 eV *below* its own reactant state, a
+physically impossible sign. UMA, on CH₄/Ni(100), converges cleanly to a first
+order saddle with a single imaginary mode at 40.6 meV; pushing the breaking bond
+0.35 Å either way relaxes straight back to 2.39 Å, so the saddle belongs to some
+other motion entirely and its 0.629 eV "barrier" is not this reaction's.
+
+**Produced by the pipeline.** The endpoint builder placed the two N atoms of
+dissociated N₂/Ru(0001) 2.563 Å apart, sharing a surface Ru atom. That is the
+repulsive adjacent site arrangement, not the product minimum, which is reached
+only once the atoms diffuse onto separate metal atoms (Chorkendorff and
+Niemantsverdriet, *Concepts of Modern Catalysis and Kinetics*, section
+6.5.3.2). Earlier, CH₄ went down edge first and broke the wrong C–H bond, giving
+7 eV against a 0.8 eV reference.
+
+Every one of these produced a plausible number and no exception.
+
+**The limit, stated plainly.** The checks here are generic: mode counts,
+connectivity, bond geometry, shared metal atoms, drift. They catch failures that
+look the same on every system. They cannot anticipate a failure specific to one
+chemistry, which only shows up when that system is actually studied. Nothing in
+this repository should be read as a guarantee that an MLIP result is physical;
+only that these particular ways of being unphysical have been ruled out.
 
 #### Related work, and how this differs
 
