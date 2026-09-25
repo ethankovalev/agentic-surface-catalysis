@@ -136,6 +136,32 @@ def main():
         for line in describe(atoms):
             print(line)
 
+    print("\n5. SAVED BANDS")
+    any_band = False
+    for label in ("band1", "band2"):
+        f = folder / f"band_{label}.traj"
+        if not f.exists():
+            continue
+        any_band = True
+        images = read(str(f), index=":")
+        print(f"  {label}: {len(images)} images")
+        first = None
+        for n, image in enumerate(images):
+            try:
+                energy = image.get_potential_energy()
+                first = energy if first is None else first
+                e_text = f"{energy - first:+.3f} eV"
+            except Exception:
+                e_text = "   n/a   "
+            bond = breaking_bond(image)
+            b_text = "n/a" if bond is None else f"{bond[2]:.2f} A"
+            flags = [line.split()[-1] for line in describe(image)
+                     if not line.endswith("on the surface")]
+            note = f"   {', '.join(flags)}" if flags else ""
+            print(f"    image {n:2d}   E {e_text}   breaking bond {b_text}{note}")
+    if not any_band:
+        print("  none saved (runs before patch_save_bands.py kept no bands)")
+
 
 if __name__ == "__main__":
     main()

@@ -59,7 +59,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import config  # noqa: E402
-from ase.io import read  # noqa: E402
+from ase.io import read, write  # noqa: E402
 from src import store  # noqa: E402
 from src.benchmark import SBH10  # noqa: E402
 from src.tools import (  # noqa: E402
@@ -80,6 +80,10 @@ RESULTS = Path(os.environ.get(
     "/workspace/agentic-surface-catalysis/results/blind"))
 
 STRUCTURES = ("initial", "final", "gasref", "peak", "saddle")
+# Each band's final images. work/ is on the container disk and is lost
+# when a pod is replaced; these are copied to the result folder with the
+# structures above. See patches/patch_save_bands.py.
+BANDS = ("band_band1", "band_band2")
 
 BARRIER_MAX_eV = 3.0
 BARRIER_MIN_eV = -0.2
@@ -118,6 +122,18 @@ def _keep_peak(work, label, neb, peaks):
     dst = work / f"peak_{label}.traj"
     shutil.copy(src, dst)
     neb = neb or {}
+
+    # The final band is the last n_images frames of neb.traj, whether that
+    # file holds the whole optimisation history or only a walled retry's
+    # final band.
+    history = work / "neb.traj"
+    n_band = neb.get("n_images")
+    if history.exists() and n_band:
+        try:
+            frames = read(str(history), index=":")
+            write(str(work / f"band_{label}.traj"), frames[-n_band:])
+        except Exception as exc:
+            print(f"  could not save band {label}: {type(exc).__name__}: {exc}")
     peaks.append({"label": label, "file": dst,
                   "band_barrier_eV": neb.get("barrier_eV"),
                   "converged": bool(neb.get("converged"))})
@@ -326,7 +342,7 @@ def main():
 
             folder = RESULTS / tag
             folder.mkdir(exist_ok=True)
-            for name in STRUCTURES:
+            for name in STRUCTURES + BANDS:
                 src = work / f"{name}.traj"
                 if src.exists():
                     shutil.copy(src, folder / f"{name}.traj")
