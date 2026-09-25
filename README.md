@@ -110,6 +110,47 @@ human or DFT verification. Finding 3 below is the evidence that such a signal
 exists in the data. Building and validating it is future work and is marked as
 such.
 
+## The pipeline
+
+<p align="center">
+  <img src="docs/pipeline.png" width="760" alt="The pipeline in six stages: build, relax, find the path, converge on the saddle, barrier, verify. Three tracks enter at the top; scoring against SBH10 happens only after the run.">
+</p>
+
+The diagram is drawn from `docs/pipeline.mmd`. After editing it, regenerate the image from the repository root with
+`npx -p @mermaid-js/mermaid-cli mmdc -i docs/pipeline.mmd -o docs/pipeline.png -b white -w 1000 -s 2`.
+
+Every track uses the same tools. The seeded track skips building and the band,
+because it starts from the published saddle; it also reports a single point at
+that geometry with nothing moved, which exists for every reaction whether or not
+refinement succeeds. The blind scripted track runs the steps in the order shown,
+including two parts that are its own policy rather than the tools': a second,
+finer band when the first does not converge, and keeping the lowest connected
+saddle when more than one band peak refines to one. The agent track reaches the
+same tools through a supervisor and three agents, which decide the order
+themselves; it may also run a second band, but it refines one peak at a time.
+In every track the exit gate, or its scripted equivalent, refuses a result until
+every required check has passed.
+
+Nothing before the final box sees the reference barrier. The tools cannot reach
+`src/benchmark.py`, and the comparison is made by the runner after the run
+returns.
+
+**Where things live**
+
+| Folder | Contents |
+|---|---|
+| `src/` | the tools, agents, prompts, supervisor graph and exit gate |
+| `scripts/` | the runners for each track, pre flight checks, probes and comparisons |
+| `tests/` | CPU only regression tests |
+| `analysis/` | the headline figure, seeded summary tables and the disagreement analysis |
+| `patches/` | every source edit, each explaining the bug it fixed and the evidence |
+| `docs/` | the pipeline diagram and its source |
+| `data_sbh10_si/` | the transcribed SBH10 transition states and their validation record |
+
+At the root: `config.py` (model registry, thresholds, required checks),
+`invoke.py` (single reaction entry point), `build_seeds.py` (SBH10 structures to
+ASE), `NOTES.md` (running log), `CLAUDE.md` (working rules) and the licence.
+
 ---
 
 ## Two tracks, and why they must never be averaged together
@@ -1106,49 +1147,6 @@ exception. Treat these as the representative failure mode of this whole exercise
   retrieve literature. Its prompt now forbids citing anything no tool returned.
 - **A negative well depth of −0.011 eV failed a reaction**, where D3 off wells are
   a few meV and UMA resolves about 0.05 eV. The check now tolerates −0.02 eV.
-
----
-
-## The pipeline
-
-<p align="center">
-  <img src="docs/pipeline.png" width="760" alt="The pipeline in six stages: build, relax, find the path, converge on the saddle, barrier, verify. Three tracks enter at the top; scoring against SBH10 happens only after the run.">
-</p>
-
-The diagram is drawn from `docs/pipeline.mmd`. After editing it, regenerate the image from the repository root with
-`npx -p @mermaid-js/mermaid-cli mmdc -i docs/pipeline.mmd -o docs/pipeline.png -b white -w 1000 -s 2`.
-
-Every track uses the same tools. The seeded track skips building and the band,
-because it starts from the published saddle; it also reports a single point at
-that geometry with nothing moved, which exists for every reaction whether or not
-refinement succeeds. The blind scripted track runs the steps in the order shown,
-including two parts that are its own policy rather than the tools': a second,
-finer band when the first does not converge, and keeping the lowest connected
-saddle when more than one band peak refines to one. The agent track reaches the
-same tools through a supervisor and three agents, which decide the order
-themselves; it may also run a second band, but it refines one peak at a time.
-In every track the exit gate, or its scripted equivalent, refuses a result until
-every required check has passed.
-
-Nothing before the final box sees the reference barrier. The tools cannot reach
-`src/benchmark.py`, and the comparison is made by the runner after the run
-returns.
-
-**Where things live**
-
-| Folder | Contents |
-|---|---|
-| `src/` | the tools, agents, prompts, supervisor graph and exit gate |
-| `scripts/` | the runners for each track, pre flight checks, probes and comparisons |
-| `tests/` | CPU only regression tests |
-| `analysis/` | the headline figure, seeded summary tables and the disagreement analysis |
-| `patches/` | every source edit, each explaining the bug it fixed and the evidence |
-| `docs/` | the pipeline diagram and its source |
-| `data_sbh10_si/` | the transcribed SBH10 transition states and their validation record |
-
-At the root: `config.py` (model registry, thresholds, required checks),
-`invoke.py` (single reaction entry point), `build_seeds.py` (SBH10 structures to
-ASE), `NOTES.md` (running log), `CLAUDE.md` (working rules) and the licence.
 
 ## What is not finished
 
