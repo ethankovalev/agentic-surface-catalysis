@@ -1347,7 +1347,10 @@ apostrophe opens an unterminated quote. Put comments on their own line.
 cannot contain hyphens. It is `ANTHROPIC_API_KEY` with underscores, and no
 spaces around the `=`.
 
-## Reference
+## References
+
+Chorkendorff, I.; Niemantsverdriet, J. W. 
+*Concepts of Modern Catalysis and Kinetics.* 3rd ed.; Wiley-VCH: Weinheim, Germany, 2017. 
 
 Sharada, S. M.; Bligaard, T.; Luntz, A. C.; Kroes, G.-J.; Nørskov, J. K.
 *SBH10: A Benchmark Database of Barrier Heights on Transition Metal
